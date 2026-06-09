@@ -131,6 +131,13 @@ def render_sidebar() -> PipelineConfig:
                 help="Select OCR languages for text recognition",
             )
 
+            ocr_engine = st.selectbox(
+                "OCR Engine",
+                options=["easyocr", "rapidocr", "tesseract", "tesseract_cli", "macocr", "kserve", "auto"],
+                index=0,
+                help="OCR engine used by Docling (e.g. EasyOCR, RapidOCR, Tesseract, etc.)."
+            )
+
             config = PipelineConfig(
                 pipeline_mode="standard",
                 do_ocr=do_ocr,
@@ -143,6 +150,7 @@ def render_sidebar() -> PipelineConfig:
                 generate_picture_images=gen_pic,
                 images_scale=images_scale,
                 ocr_languages=ocr_langs,
+                ocr_engine=ocr_engine,
                 downstream_model=downstream_model,
             )
 
@@ -207,6 +215,7 @@ def render_sidebar() -> PipelineConfig:
                 display_config = {
                     "pipeline": "StandardPdfPipeline",
                     "do_ocr": config.do_ocr,
+                    "ocr_engine": config.ocr_engine,
                     "do_table_structure": config.do_table_structure,
                     "do_formula_enrichment": config.do_formula_enrichment,
                     "do_code_enrichment": config.do_code_enrichment,

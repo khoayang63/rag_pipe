@@ -105,6 +105,12 @@ def parse_args():
         default=1.0,
         help="OCR Image zoom scale (Default: 1.0. Set to 2.0 for scanned/tiny text)."
     )
+    parser.add_argument(
+        "--ocr-engine",
+        choices=["easyocr", "rapidocr", "tesseract", "tesseract_cli", "macocr", "kserve", "auto"],
+        default="easyocr",
+        help="OCR engine to use for standard pipeline (Default: easyocr)."
+    )
     
     # VLM options
     parser.add_argument(
@@ -174,6 +180,7 @@ def main():
     config = PipelineConfig(
         pipeline_mode=args.mode,
         do_ocr=args.do_ocr,
+        ocr_engine=args.ocr_engine,
         do_table_structure=args.do_table,
         do_formula_enrichment=args.do_formula,
         do_code_enrichment=args.do_code,

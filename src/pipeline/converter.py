@@ -42,8 +42,9 @@ class PipelineConfig:
     generate_picture_images: bool = True
     images_scale: float = 1.0
 
-    # OCR languages
+    # OCR options
     ocr_languages: list = field(default_factory=lambda: ["en"])
+    ocr_engine: str = "easyocr"
 
     # VLM options (when pipeline_mode == "vlm")
     vlm_preset: str = "GRANITE_VISION_TRANSFORMERS"
@@ -86,6 +87,33 @@ def create_standard_converter(config: PipelineConfig) -> DocumentConverter:
     options.generate_page_images = config.generate_page_images
     options.generate_picture_images = config.generate_picture_images
     options.images_scale = config.images_scale
+
+    # Set OCR engine options
+    from docling.datamodel.pipeline_options import (
+        EasyOcrOptions,
+        RapidOcrOptions,
+        TesseractOcrOptions,
+        TesseractCliOcrOptions,
+        OcrMacOptions,
+        KserveV2OcrOptions,
+        OcrAutoOptions,
+    )
+
+    ocr_map = {
+        "easyocr": EasyOcrOptions,
+        "rapidocr": RapidOcrOptions,
+        "tesseract": TesseractOcrOptions,
+        "tesseract_cli": TesseractCliOcrOptions,
+        "macocr": OcrMacOptions,
+        "kserve": KserveV2OcrOptions,
+        "auto": OcrAutoOptions,
+    }
+
+    ocr_cls = ocr_map.get(config.ocr_engine.lower(), EasyOcrOptions)
+    options.ocr_options = ocr_cls()
+
+    if hasattr(options.ocr_options, "lang"):
+        options.ocr_options.lang = config.ocr_languages
 
     converter = DocumentConverter(
         format_options={
@@ -206,6 +234,7 @@ def convert_document(
         config_dict = {
             "pipeline": "StandardPdfPipeline",
             "do_ocr": config.do_ocr,
+            "ocr_engine": config.ocr_engine,
             "do_table_structure": config.do_table_structure,
             "do_formula_enrichment": config.do_formula_enrichment,
             "do_code_enrichment": config.do_code_enrichment,
