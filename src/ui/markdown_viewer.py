@@ -8,14 +8,16 @@ with download functionality.
 import streamlit as st
 
 
-def render_markdown_viewer(md: str, enriched_md: str | None = None):
+def render_markdown_viewer(md: str, enriched_md: str | None = None, doc_id: str = ""):
     """
     Render the markdown viewer with Rendered/Raw/Enriched tabs.
 
     Args:
         md: Raw markdown from Docling conversion
         enriched_md: Optional enriched markdown (after VLM descriptions)
+        doc_id: Unique identifier for this document (used to generate unique widget keys)
     """
+    key_suffix = f"_{doc_id}" if doc_id else ""
     if enriched_md:
         tabs = st.tabs(["Rendered", "Enriched", "Raw Source"])
     else:
@@ -36,6 +38,7 @@ def render_markdown_viewer(md: str, enriched_md: str | None = None):
                 data=md,
                 file_name="converted_document.md",
                 mime="text/markdown",
+                key=f"download_converted{key_suffix}",
             )
         with col2:
             _render_stats(md)
@@ -55,6 +58,7 @@ def render_markdown_viewer(md: str, enriched_md: str | None = None):
                     data=enriched_md,
                     file_name="enriched_document.md",
                     mime="text/markdown",
+                    key=f"download_enriched{key_suffix}",
                 )
             with col2:
                 _render_stats(enriched_md)
@@ -69,7 +73,7 @@ def render_markdown_viewer(md: str, enriched_md: str | None = None):
             data=display_md,
             file_name="raw_document.md",
             mime="text/markdown",
-            key="download_raw",
+            key=f"download_raw{key_suffix}",
         )
 
 

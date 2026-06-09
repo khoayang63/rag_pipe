@@ -44,10 +44,10 @@ class PipelineConfig:
 
     # OCR options
     ocr_languages: list = field(default_factory=lambda: ["en"])
-    ocr_engine: str = "easyocr"
+    ocr_engine: str = "rapidocr"
 
     # Layout options
-    layout_model: str = "layout_v2"
+    layout_model: str = "heron"
 
     # VLM options (when pipeline_mode == "vlm")
     vlm_preset: str = "GRANITE_VISION_TRANSFORMERS"
@@ -69,6 +69,7 @@ class ConversionResult:
     pipeline_mode: str
     pipeline_config: dict
     input_format: str
+    source_filename: str = ""
     timings: Optional[dict] = None
 
 
@@ -102,6 +103,11 @@ def create_standard_converter(config: PipelineConfig) -> DocumentConverter:
         OcrAutoOptions,
     )
 
+    import sys
+    selected_ocr = config.ocr_engine.lower()
+    if selected_ocr == "macocr" and sys.platform != "darwin":
+        selected_ocr = "rapidocr"
+
     ocr_map = {
         "easyocr": EasyOcrOptions,
         "rapidocr": RapidOcrOptions,
@@ -112,7 +118,7 @@ def create_standard_converter(config: PipelineConfig) -> DocumentConverter:
         "auto": OcrAutoOptions,
     }
 
-    ocr_cls = ocr_map.get(config.ocr_engine.lower(), EasyOcrOptions)
+    ocr_cls = ocr_map.get(selected_ocr, EasyOcrOptions)
     options.ocr_options = ocr_cls()
 
     if hasattr(options.ocr_options, "lang"):
@@ -214,6 +220,35 @@ def detect_input_format(file_path: str) -> Optional[InputFormat]:
     return format_map.get(ext)
 
 
+def _detect_actual_ocr(converter) -> str:
+    """Detect the actual OCR engine class initialized in the converter."""
+    try:
+        ocr_model = None
+        for k, pipeline in converter.initialized_pipelines.items():
+            if hasattr(pipeline, "ocr_model") and pipeline.ocr_model is not None:
+                ocr_model = pipeline.ocr_model
+                break
+        
+        if ocr_model:
+            if type(ocr_model).__name__ == "OcrAutoModel" and hasattr(ocr_model, "_engine") and ocr_model._engine is not None:
+                ocr_model = ocr_model._engine
+            
+            ocr_model_class = type(ocr_model).__name__
+            if "EasyOcr" in ocr_model_class:
+                return "easyocr"
+            elif "RapidOcr" in ocr_model_class:
+                return "rapidocr"
+            elif "Tesseract" in ocr_model_class:
+                return "tesseract"
+            elif "MacOcr" in ocr_model_class:
+                return "macocr"
+            return ocr_model_class.lower()
+    except Exception:
+        pass
+    return "unknown"
+
+
+
 def convert_document(
     file_path: str,
     config: PipelineConfig,
@@ -246,30 +281,8 @@ def convert_document(
     md = result.document.export_to_markdown()
 
     # Build config dict for display
-    if config.pipeline_mode == "vlm":
-        config_dict = {
-            "pipeline": "VlmPipeline",
-            "vlm_preset": config.vlm_preset,
-            "vlm_scale": config.vlm_scale,
-            "vlm_max_size": config.vlm_max_size,
-            "vlm_max_new_tokens": config.vlm_max_new_tokens,
-            "images_scale": config.images_scale,
-        }
-    else:
-        config_dict = {
-            "pipeline": "StandardPdfPipeline",
-            "do_ocr": config.do_ocr,
-            "ocr_engine": config.ocr_engine,
-            "layout_model": config.layout_model,
-            "do_table_structure": config.do_table_structure,
-            "do_formula_enrichment": config.do_formula_enrichment,
-            "do_code_enrichment": config.do_code_enrichment,
-            "do_picture_description": config.do_picture_description,
-            "do_picture_classification": config.do_picture_classification,
-            "generate_page_images": config.generate_page_images,
-            "generate_picture_images": config.generate_picture_images,
-            "images_scale": config.images_scale,
-        }
+    config_dict = _build_config_dict(config)
+    config_dict["actual_ocr"] = _detect_actual_ocr(converter)
 
     input_format = detect_input_format(file_path)
     format_name = input_format.value if input_format else "unknown"
@@ -281,5 +294,108 @@ def convert_document(
         pipeline_mode=config.pipeline_mode,
         pipeline_config=config_dict,
         input_format=format_name,
+        source_filename=Path(file_path).name,
         timings=result.timings,
     )
+
+
+def _build_config_dict(config: PipelineConfig) -> dict:
+    """Build a display-friendly config dict from PipelineConfig."""
+    if config.pipeline_mode == "vlm":
+        return {
+            "pipeline": "VlmPipeline",
+            "vlm_preset": config.vlm_preset,
+            "vlm_scale": config.vlm_scale,
+            "vlm_max_size": config.vlm_max_size,
+            "vlm_max_new_tokens": config.vlm_max_new_tokens,
+            "images_scale": config.images_scale,
+        }
+    return {
+        "pipeline": "StandardPdfPipeline",
+        "do_ocr": config.do_ocr,
+        "ocr_engine": config.ocr_engine,
+        "layout_model": config.layout_model,
+        "do_table_structure": config.do_table_structure,
+        "do_formula_enrichment": config.do_formula_enrichment,
+        "do_code_enrichment": config.do_code_enrichment,
+        "do_picture_description": config.do_picture_description,
+        "do_picture_classification": config.do_picture_classification,
+        "generate_page_images": config.generate_page_images,
+        "generate_picture_images": config.generate_picture_images,
+        "images_scale": config.images_scale,
+        "downstream_model": config.downstream_model,
+    }
+
+
+def convert_documents(
+    file_paths: list[str],
+    config: PipelineConfig,
+    progress_callback=None,
+) -> list[ConversionResult]:
+    """
+    Batch-convert multiple documents using Docling's convert_all().
+
+    Creates the converter once and reuses it across all files for efficiency.
+    The progress_callback(index, total, filename) is called before each file
+    starts processing (useful for UI progress updates).
+
+    Args:
+        file_paths: List of file paths to convert
+        config: Pipeline configuration to apply to all files
+        progress_callback: Optional callback(index, total, filename)
+
+    Returns:
+        List of ConversionResult, one per input file
+    """
+    # Clear GPU cache before batch conversion
+    try:
+        import torch
+        gc.collect()
+        torch.cuda.empty_cache()
+    except ImportError:
+        gc.collect()
+
+    # Create the converter once
+    if config.pipeline_mode == "vlm":
+        converter = create_vlm_converter(config)
+    else:
+        converter = create_standard_converter(config)
+
+    config_dict = _build_config_dict(config)
+    results = []
+
+    # Use convert_all for batch processing
+    start_time = time.time()
+    for i, result in enumerate(converter.convert_all(file_paths)):
+        # Detect actual OCR engine after the first document initialized the pipeline
+        if "actual_ocr" not in config_dict:
+            config_dict["actual_ocr"] = _detect_actual_ocr(converter)
+
+        file_path = file_paths[i] if i < len(file_paths) else "unknown"
+        elapsed = time.time() - start_time
+
+        if progress_callback:
+            progress_callback(i + 1, len(file_paths), Path(file_path).name)
+
+        md = result.document.export_to_markdown()
+
+        input_format = detect_input_format(file_path)
+        format_name = input_format.value if input_format else "unknown"
+
+        results.append(
+            ConversionResult(
+                document=result.document,
+                markdown=md,
+                conversion_time=elapsed,
+                pipeline_mode=config.pipeline_mode,
+                pipeline_config=config_dict,
+                input_format=format_name,
+                source_filename=Path(file_path).name,
+                timings=result.timings,
+            )
+        )
+
+        # Reset timer for next file
+        start_time = time.time()
+
+    return results

@@ -3,6 +3,7 @@ Docling RAG Pipeline — Streamlit Application
 
 Main entry point for the document processing pipeline with web UI.
 Supports PDF, DOCX, PPTX, HTML, and image files.
+Supports both single and multi-file batch conversion.
 
 Run: streamlit run src/app.py
 """
@@ -22,7 +23,7 @@ from ui.upload import render_upload
 from ui.markdown_viewer import render_markdown_viewer
 from ui.figure_gallery import render_figure_gallery
 from ui.pipeline_info import render_pipeline_info
-from pipeline.converter import convert_document
+from pipeline.converter import convert_document, convert_documents
 from pipeline.figure_extractor import extract_figures
 from pipeline.enrichment import enrich_markdown, count_image_placeholders
 
@@ -51,20 +52,11 @@ inject_custom_css()
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())[:8]
 
-if "conversion_result" not in st.session_state:
-    st.session_state.conversion_result = None
-
-if "figures" not in st.session_state:
-    st.session_state.figures = None
-
-if "descriptions" not in st.session_state:
-    st.session_state.descriptions = None
-
-if "description_result" not in st.session_state:
-    st.session_state.description_result = None
-
-if "enriched_md" not in st.session_state:
-    st.session_state.enriched_md = None
+# Multi-document results: list of dicts, one per converted document
+# Each dict: {"result": ConversionResult, "figures": [...], "descriptions": [...],
+#             "description_result": ..., "enriched_md": ...}
+if "doc_results" not in st.session_state:
+    st.session_state.doc_results = []
 
 if "hf_logged_in" not in st.session_state:
     st.session_state.hf_logged_in = False
@@ -120,62 +112,76 @@ st.markdown(
 )
 
 # ──────────────────────────────────────────────
-# Step 1: File Upload
+# Step 1: File Upload (multi-file)
 # ──────────────────────────────────────────────
-file_path = render_upload()
+file_paths = render_upload()
 
 # ──────────────────────────────────────────────
 # Step 2: Convert Button
 # ──────────────────────────────────────────────
-if file_path:
+if file_paths:
     st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 1, 4])
-
-    with col1:
-        convert_clicked = st.button(
-            "Convert Document",
-            type="primary",
-            width="stretch",
-        )
-
-    with col2:
-        gpu_info = check_gpu_available()
-        describe_clicked = st.button(
-            "Describe Figures",
-            disabled=not gpu_info["available"],
-            width="stretch",
-            help="Requires CUDA GPU. Uses Qwen3-VL-2B-Instruct." if not gpu_info["available"] else "Generate VLM descriptions for extracted figures.",
-        )
+    convert_clicked = st.button(
+        f"Convert {'Documents' if len(file_paths) > 1 else 'Document'} ({len(file_paths)} file{'s' if len(file_paths) > 1 else ''})",
+        type="primary",
+        use_container_width=False,
+    )
 
     # ──────────────────────────────────────────
-    # Convert Document
+    # Convert Documents
     # ──────────────────────────────────────────
     if convert_clicked:
-        with st.status("Converting document...", expanded=True) as status:
+        with st.status(f"Converting {len(file_paths)} document(s)...", expanded=True) as status:
             st.write("Initializing pipeline...")
             st.write(f"Mode: **{config.pipeline_mode.title()}**")
 
             try:
-                st.write("Running document conversion...")
-                result = convert_document(file_path, config)
-                st.session_state.conversion_result = result
+                if len(file_paths) == 1:
+                    # Single file — use convert_document for exact backward compat
+                    st.write(f"Converting: **{os.path.basename(file_paths[0])}**")
+                    result = convert_document(file_paths[0], config)
+                    conversion_results = [result]
+                else:
+                    # Multiple files — use convert_all for batch efficiency
+                    st.write(f"Batch converting {len(file_paths)} files...")
+                    conversion_results = convert_documents(
+                        file_paths,
+                        config,
+                        progress_callback=lambda i, t, name: st.write(f"[{i}/{t}] Converting: **{name}**"),
+                    )
 
-                st.write("Extracting figures...")
+                # Build per-document results with figure extraction
+                doc_results = []
                 figures_dir = get_figures_dir(st.session_state.session_id)
-                figures = extract_figures(result.document, str(figures_dir))
-                st.session_state.figures = figures
 
-                # Reset descriptions and enriched markdown
-                st.session_state.descriptions = None
-                st.session_state.description_result = None
-                st.session_state.enriched_md = None
+                for idx, conv_result in enumerate(conversion_results):
+                    st.write(f"Extracting figures from: **{conv_result.source_filename}**")
 
-                placeholder_count = count_image_placeholders(result.markdown)
+                    # Each doc gets its own figures subfolder
+                    doc_figures_dir = figures_dir / f"doc_{idx}"
+                    doc_figures_dir.mkdir(parents=True, exist_ok=True)
+
+                    figures = extract_figures(conv_result.document, str(doc_figures_dir))
+                    placeholder_count = count_image_placeholders(conv_result.markdown)
+
+                    doc_results.append({
+                        "result": conv_result,
+                        "figures": figures,
+                        "descriptions": None,
+                        "description_result": None,
+                        "enriched_md": None,
+                        "placeholder_count": placeholder_count,
+                    })
+
+                st.session_state.doc_results = doc_results
+
+                total_figures = sum(len(d["figures"]) for d in doc_results)
+                total_time = sum(r.conversion_time for r in conversion_results)
 
                 status.update(
-                    label=f"Conversion complete — {result.conversion_time:.1f}s, "
-                          f"{len(figures)} figures, {placeholder_count} image placeholders",
+                    label=f"Conversion complete — {total_time:.1f}s, "
+                          f"{len(conversion_results)} doc(s), {total_figures} figures",
                     state="complete",
                 )
 
@@ -185,111 +191,167 @@ if file_path:
                 import traceback
                 st.code(traceback.format_exc(), language="text")
 
-    # ──────────────────────────────────────────
-    # Describe Figures with Qwen3-VL
-    # ──────────────────────────────────────────
-    if describe_clicked:
-        if not st.session_state.conversion_result:
-            st.warning("⚠️ Please click the **Convert Document** button on the left to process the document first.")
-        elif not st.session_state.figures:
-            st.info("ℹ️ No figures or images were found in this document to describe.")
-        else:
-            from pipeline.vlm_describer import describe_figures, load_model
-
-            with st.status("Generating figure descriptions...", expanded=True) as status:
-                # Load model (cached in session state, reloaded if model ID changes)
-                if (
-                    st.session_state.vlm_model is None
-                    or getattr(st.session_state, "vlm_model_id", None) != config.downstream_model
-                ):
-                    st.write(f"Loading {config.downstream_model}...")
-                    
-                    # Clear previous model to prevent RAM/VRAM leak
-                    if st.session_state.vlm_model is not None:
-                        del st.session_state.vlm_model
-                        del st.session_state.vlm_processor
-                        st.session_state.vlm_model = None
-                        st.session_state.vlm_processor = None
-                        import gc
-                        gc.collect()
-                        try:
-                            import torch
-                            torch.cuda.empty_cache()
-                        except ImportError:
-                            pass
-
-                    model, processor = load_model(model_id=config.downstream_model)
-                    st.session_state.vlm_model = model
-                    st.session_state.vlm_processor = processor
-                    st.session_state.vlm_model_id = config.downstream_model
-                    st.write("Model loaded.")
-                else:
-                    st.write(f"Using cached model: {config.downstream_model}")
-
-                st.write(f"Describing {len(st.session_state.figures)} figures...")
-
-                desc_result = describe_figures(
-                    st.session_state.figures,
-                    model=st.session_state.vlm_model,
-                    processor=st.session_state.vlm_processor,
-                    model_id=config.downstream_model,
-                )
-
-                st.session_state.descriptions = desc_result.descriptions
-                st.session_state.description_result = desc_result
-
-                # Auto-enrich markdown
-                if st.session_state.conversion_result:
-                    figure_paths = [f.image_path for f in st.session_state.figures]
-                    enriched = enrich_markdown(
-                        st.session_state.conversion_result.markdown,
-                        desc_result.descriptions,
-                        figure_paths,
-                    )
-                    st.session_state.enriched_md = enriched
-
-                status.update(
-                    label=f"Description complete — {desc_result.inference_time:.1f}s, "
-                          f"GPU: {desc_result.gpu_used}",
-                    state="complete",
-                )
-
 # ──────────────────────────────────────────────
-# Step 3: Results Display
+# Step 3: Results Display (per-document)
 # ──────────────────────────────────────────────
-if st.session_state.conversion_result:
+if st.session_state.doc_results:
     st.markdown("<div style='height: 1.5rem;'></div>", unsafe_allow_html=True)
 
-    result_tabs = st.tabs([
-        "Markdown Output",
-        "Extracted Figures",
-        "Pipeline Info",
-    ])
+    # Summary metrics
+    total_docs = len(st.session_state.doc_results)
+    total_figures = sum(len(d["figures"]) for d in st.session_state.doc_results)
+    total_time = sum(d["result"].conversion_time for d in st.session_state.doc_results)
 
-    # Tab 1: Markdown
-    with result_tabs[0]:
-        render_markdown_viewer(
-            st.session_state.conversion_result.markdown,
-            st.session_state.enriched_md,
-        )
+    st.markdown(
+        f"""
+        <div class="glass-card animate-in" style="padding:1rem 1.5rem; margin-bottom:1rem;">
+            <div style="display:flex; gap:2rem; align-items:center;">
+                <div style="text-align:center;">
+                    <div style="font-size:1.5rem; font-weight:700; color:#34d399;
+                         font-family:'JetBrains Mono',monospace;">{total_docs}</div>
+                    <div style="font-size:0.72rem; color:#5c5c6e; text-transform:uppercase;
+                         letter-spacing:0.05em;">Documents</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:1.5rem; font-weight:700; color:#60a5fa;
+                         font-family:'JetBrains Mono',monospace;">{total_figures}</div>
+                    <div style="font-size:0.72rem; color:#5c5c6e; text-transform:uppercase;
+                         letter-spacing:0.05em;">Figures</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:1.5rem; font-weight:700; color:#fbbf24;
+                         font-family:'JetBrains Mono',monospace;">{total_time:.1f}s</div>
+                    <div style="font-size:0.72rem; color:#5c5c6e; text-transform:uppercase;
+                         letter-spacing:0.05em;">Total Time</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    # Tab 2: Figures
-    with result_tabs[1]:
-        if st.session_state.figures is not None:
-            render_figure_gallery(
-                st.session_state.figures,
-                st.session_state.descriptions,
-            )
-        else:
-            st.info("Convert a document to see extracted figures.")
+    # Per-document expanders
+    for doc_idx, doc_data in enumerate(st.session_state.doc_results):
+        result = doc_data["result"]
+        figures = doc_data["figures"]
+        filename = result.source_filename or f"Document {doc_idx + 1}"
 
-    # Tab 3: Pipeline Info
-    with result_tabs[2]:
-        render_pipeline_info(
-            conversion_result=st.session_state.conversion_result,
-            figures_count=len(st.session_state.figures or []),
-            description_result=st.session_state.description_result,
-        )
+        fig_count = len(figures)
+        time_str = f"{result.conversion_time:.1f}s"
+
+        with st.expander(
+            f"📄 {filename}  —  {fig_count} figures  ·  {time_str}",
+            expanded=(total_docs == 1),
+        ):
+            # ── Per-document Describe Figures button ──
+            gpu_info = check_gpu_available()
+            if figures:
+                describe_col1, describe_col2 = st.columns([1, 4])
+                with describe_col1:
+                    describe_clicked = st.button(
+                        "Describe Figures",
+                        key=f"describe_{doc_idx}",
+                        disabled=not gpu_info["available"],
+                        help=(
+                            "Requires CUDA GPU. Uses Qwen3-VL-2B-Instruct."
+                            if not gpu_info["available"]
+                            else f"Generate VLM descriptions for {fig_count} figures in this document."
+                        ),
+                    )
+
+                if describe_clicked:
+                    from pipeline.vlm_describer import describe_figures, load_model
+
+                    with st.status(f"Describing figures for {filename}...", expanded=True) as desc_status:
+                        # Load model (cached in session state, reloaded if model ID changes)
+                        if (
+                            st.session_state.vlm_model is None
+                            or getattr(st.session_state, "vlm_model_id", None) != config.downstream_model
+                        ):
+                            st.write(f"Loading {config.downstream_model}...")
+
+                            # Clear previous model to prevent RAM/VRAM leak
+                            if st.session_state.vlm_model is not None:
+                                del st.session_state.vlm_model
+                                del st.session_state.vlm_processor
+                                st.session_state.vlm_model = None
+                                st.session_state.vlm_processor = None
+                                import gc
+                                gc.collect()
+                                try:
+                                    import torch
+                                    torch.cuda.empty_cache()
+                                except ImportError:
+                                    pass
+
+                            model, processor = load_model(model_id=config.downstream_model)
+                            st.session_state.vlm_model = model
+                            st.session_state.vlm_processor = processor
+                            st.session_state.vlm_model_id = config.downstream_model
+                            st.write("Model loaded.")
+                        else:
+                            st.write(f"Using cached model: {config.downstream_model}")
+
+                        st.write(f"Describing {len(figures)} figures...")
+
+                        desc_result = describe_figures(
+                            figures,
+                            model=st.session_state.vlm_model,
+                            processor=st.session_state.vlm_processor,
+                            model_id=config.downstream_model,
+                        )
+
+                        # Update this document's results
+                        doc_data["descriptions"] = desc_result.descriptions
+                        doc_data["description_result"] = desc_result
+
+                        # Auto-enrich markdown
+                        figure_paths = [f.image_path for f in figures]
+                        enriched = enrich_markdown(
+                            result.markdown,
+                            desc_result.descriptions,
+                            figure_paths,
+                        )
+                        doc_data["enriched_md"] = enriched
+
+                        desc_status.update(
+                            label=f"Description complete — {desc_result.inference_time:.1f}s, "
+                                  f"GPU: {desc_result.gpu_used}",
+                            state="complete",
+                        )
+
+            # ── Per-document result tabs ──
+            result_tabs = st.tabs([
+                "Markdown Output",
+                "Extracted Figures",
+                "Pipeline Info",
+            ])
+
+            # Tab 1: Markdown
+            with result_tabs[0]:
+                render_markdown_viewer(
+                    result.markdown,
+                    doc_data.get("enriched_md"),
+                    doc_id=str(doc_idx),
+                )
+
+            # Tab 2: Figures
+            with result_tabs[1]:
+                if figures:
+                    render_figure_gallery(
+                        figures,
+                        doc_data.get("descriptions"),
+                    )
+                else:
+                    st.info("No figures found in this document.")
+
+            # Tab 3: Pipeline Info
+            with result_tabs[2]:
+                render_pipeline_info(
+                    conversion_result=result,
+                    figures_count=len(figures),
+                    description_result=doc_data.get("description_result"),
+                )
 
 else:
     # Welcome state — show pipeline info
@@ -304,8 +366,8 @@ else:
                 <h3 style="margin-top:0;">How It Works</h3>
                 <div class="pipeline-flow">
                     <div class="pipeline-stage">
-                        <span class="stage-name">Upload Document</span>
-                        <span class="stage-status">PDF, DOCX, PPTX, HTML, Images</span>
+                        <span class="stage-name">Upload Documents</span>
+                        <span class="stage-status">PDF, DOCX, PPTX, HTML, Images (multi-file)</span>
                     </div>
                     <div class="pipeline-stage">
                         <span class="stage-name">Configure Pipeline</span>

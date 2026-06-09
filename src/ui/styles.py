@@ -247,8 +247,14 @@ def inject_custom_css():
             color: var(--text-secondary) !important;
         }
 
+        /* Ẩn danh sách file mặc định của Streamlit uploader để tránh trùng lặp */
+        [data-testid="stFileUploaderFile"],
+        [data-testid="stFileUploaderPagination"] {
+            display: none !important;
+        }
+
         /* Sửa triệt để lỗi hiển thị text đè của nút uploader */
-        .stFileUploader button {
+        [data-testid="stFileUploaderDropzone"] button[data-testid="baseButton-secondary"] {
             color: transparent !important;
             position: relative !important;
             min-width: 110px !important;
@@ -258,7 +264,7 @@ def inject_custom_css():
             transition: all var(--transition-fast) !important;
         }
 
-        .stFileUploader button::after {
+        [data-testid="stFileUploaderDropzone"] button[data-testid="baseButton-secondary"]::after {
             content: "Browse files" !important;
             position: absolute !important;
             left: 50% !important;
@@ -270,7 +276,7 @@ def inject_custom_css():
             white-space: nowrap !important;
         }
 
-        .stFileUploader button:hover {
+        [data-testid="stFileUploaderDropzone"] button[data-testid="baseButton-secondary"]:hover {
             background-color: var(--bg-card-hover) !important;
             border-color: var(--accent) !important;
         }
@@ -662,6 +668,52 @@ def inject_custom_css():
         /* Divider */
         hr {
             border-color: var(--border-color) !important;
+        }
+
+        /* ============================================
+           FILE CARD & DELETE BUTTON STYLE
+           ============================================ */
+        div[class*="st-key-file_card_"] {
+            background: rgba(26, 26, 34, 0.7) !important;
+            backdrop-filter: blur(16px) !important;
+            -webkit-backdrop-filter: blur(16px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.06) !important;
+            border-radius: var(--radius-md) !important;
+            padding: 0.7rem 1rem !important;
+            margin-top: 0.5rem !important;
+            box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+            transition: all var(--transition-smooth) !important;
+        }
+
+        div[class*="st-key-file_card_"]:hover {
+            border-color: rgba(255, 255, 255, 0.1) !important;
+            box-shadow: var(--shadow-card), var(--shadow-glow), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+        }
+
+        /* Style for delete buttons in the file list */
+        div[class*="st-key-delete_file_"] > div > button {
+            background: transparent !important;
+            border: 1px solid var(--border-color) !important;
+            color: var(--text-secondary) !important;
+            border-radius: var(--radius-sm) !important;
+            padding: 0.2rem 0.5rem !important;
+            font-size: 0.8rem !important;
+            width: auto !important;
+            min-height: auto !important;
+            height: auto !important;
+            box-shadow: none !important;
+            transition: all var(--transition-fast) !important;
+        }
+
+        div[class*="st-key-delete_file_"] > div > button:hover {
+            background: rgba(248, 113, 113, 0.1) !important;
+            border-color: var(--danger) !important;
+            color: var(--danger) !important;
+            transform: none !important;
+        }
+
+        div[class*="st-key-delete_file_"] > div > button:active {
+            transform: scale(0.95) !important;
         }
         </style>
         """,

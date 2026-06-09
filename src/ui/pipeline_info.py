@@ -89,15 +89,48 @@ def render_pipeline_info(
 def _get_standard_flow_html(conversion_result=None) -> str:
     """Return the Standard pipeline flow diagram HTML."""
     desc_model_id = "Qwen/Qwen3-VL-2B-Instruct"
+    ocr_engine = "easyocr"
+    actual_ocr = None
+    layout_model = "heron"
+
     if conversion_result:
         desc_model_id = conversion_result.pipeline_config.get("downstream_model", desc_model_id)
+        ocr_engine = conversion_result.pipeline_config.get("ocr_engine", ocr_engine)
+        actual_ocr = conversion_result.pipeline_config.get("actual_ocr", None)
+        layout_model = conversion_result.pipeline_config.get("layout_model", layout_model)
     
     desc_display = desc_model_id.split("/")[-1].replace("-Instruct", "")
 
+    ocr_display_map = {
+        "easyocr": "EasyOCR",
+        "rapidocr": "RapidOCR",
+        "tesseract": "Tesseract OCR",
+        "tesseract_cli": "Tesseract CLI OCR",
+        "macocr": "Mac OCR",
+        "kserve": "Kserve V2 OCR",
+        "auto": "Auto OCR",
+    }
+    
+    layout_display_map = {
+        "layout_v2": "Layout V2",
+        "heron": "Layout Heron",
+        "heron_101": "Layout Heron-101",
+        "egret_medium": "Layout Egret Medium",
+        "egret_large": "Layout Egret Large",
+        "egret_xlarge": "Layout Egret XLarge",
+    }
+    
+    ocr_display = ocr_display_map.get(ocr_engine.lower(), "EasyOCR")
+    if ocr_engine.lower() == "auto" and actual_ocr and actual_ocr != "unknown":
+        actual_display = ocr_display_map.get(actual_ocr.lower(), actual_ocr.title())
+        ocr_display = f"Auto (Detected: {actual_display})"
+        
+    layout_display = layout_display_map.get(layout_model.lower(), "Layout Heron")
+
     stages = [
         ("Document Input", "DocumentConverter", "Detects format, routes to pipeline"),
-        ("Layout Analysis", "DocLayNet / LayoutLM", "Page segmentation and region classification"),
-        ("OCR", "EasyOCR / Tesseract", "Text recognition from scanned content"),
+        ("Layout Analysis", layout_display, "Page segmentation and region classification"),
+        ("OCR", ocr_display, "Text recognition from scanned content"),
         ("Table Extraction", "TableFormer", "Table structure and cell content extraction"),
         ("Formula Extraction", "Built-in", "Mathematical formula detection and LaTeX"),
         ("Code Extraction", "Built-in", "Code block detection and language tagging"),
@@ -188,8 +221,15 @@ def _render_metrics(conversion_result, figures_count, description_result):
 def _render_model_details(conversion_result, description_result):
     """Render detailed model information inside a single HTML block."""
     desc_model_id = "Qwen/Qwen3-VL-2B-Instruct"
+    ocr_engine = "easyocr"
+    actual_ocr = None
+    layout_model = "heron"
+
     if conversion_result:
         desc_model_id = conversion_result.pipeline_config.get("downstream_model", desc_model_id)
+        ocr_engine = conversion_result.pipeline_config.get("ocr_engine", ocr_engine)
+        actual_ocr = conversion_result.pipeline_config.get("actual_ocr", None)
+        layout_model = conversion_result.pipeline_config.get("layout_model", layout_model)
     
     desc_display = desc_model_id.split("/")[-1]
     
@@ -201,18 +241,87 @@ def _render_model_details(conversion_result, description_result):
     elif "256M" in desc_display:
         desc_type = "Vision-Language Model (256M params)"
 
+    ocr_display_map = {
+        "easyocr": "EasyOCR",
+        "rapidocr": "RapidOCR",
+        "tesseract": "Tesseract OCR",
+        "tesseract_cli": "Tesseract CLI OCR",
+        "macocr": "Mac OCR",
+        "kserve": "Kserve V2 OCR",
+        "auto": "Auto OCR",
+    }
+    ocr_type_map = {
+        "easyocr": "CNN + LSTM",
+        "rapidocr": "CNN + GRU",
+        "tesseract": "LSTM",
+        "tesseract_cli": "LSTM",
+        "macocr": "Apple Native OCR",
+        "kserve": "API Endpoint",
+        "auto": "Auto Select",
+    }
+
+    layout_display_map = {
+        "layout_v2": "Layout V2",
+        "heron": "Layout Heron",
+        "heron_101": "Layout Heron-101",
+        "egret_medium": "Layout Egret Medium",
+        "egret_large": "Layout Egret Large",
+        "egret_xlarge": "Layout Egret XLarge",
+    }
+    layout_type_map = {
+        "layout_v2": "Vision Transformer",
+        "heron": "Vision Transformer (Heron)",
+        "heron_101": "Vision Transformer (Heron-101)",
+        "egret_medium": "Vision Transformer (Egret Medium)",
+        "egret_large": "Vision Transformer (Egret Large)",
+        "egret_xlarge": "Vision Transformer (Egret XLarge)",
+    }
+
+    ocr_display = ocr_display_map.get(ocr_engine.lower(), "EasyOCR")
+    ocr_type = ocr_type_map.get(ocr_engine.lower(), "CNN + LSTM")
+    if ocr_engine.lower() == "auto" and actual_ocr and actual_ocr != "unknown":
+        actual_display = ocr_display_map.get(actual_ocr.lower(), actual_ocr.title())
+        ocr_display = f"Auto (Detected: {actual_display})"
+        ocr_type = ocr_type_map.get(actual_ocr.lower(), ocr_type)
+
+    layout_display = layout_display_map.get(layout_model.lower(), "Layout Heron")
+    layout_type = layout_type_map.get(layout_model.lower(), "Vision Transformer")
+
+    # Check if selected OCR engine is installed
+    ocr_installed = True
+    check_engine = actual_ocr if (ocr_engine.lower() == "auto" and actual_ocr and actual_ocr != "unknown") else ocr_engine
+    if check_engine and check_engine.lower() == "easyocr":
+        try:
+            import easyocr
+        except ImportError:
+            ocr_installed = False
+    elif check_engine and check_engine.lower() == "rapidocr":
+        try:
+            import rapidocr
+        except ImportError:
+            ocr_installed = False
+    elif check_engine and check_engine.lower() in ["tesseract", "tesseract_cli"]:
+        try:
+            import pytesseract
+        except ImportError:
+            ocr_installed = False
+
+    ocr_badge = ocr_display
+    if not ocr_installed:
+        ocr_badge = f"{ocr_display} <span style='color:#ef4444; font-size:0.7rem; font-weight:600; margin-left:6px; background:rgba(239,68,68,0.1); padding:2px 6px; border-radius:4px; border:1px solid rgba(239,68,68,0.2);'>⚠️ Not Installed</span>"
+
     models = [
         {
             "name": "Layout Analysis",
-            "model": "DocLayNet / LayoutLM",
+            "model": layout_display,
             "purpose": "Page segmentation, region classification",
-            "type": "Vision Transformer",
+            "type": layout_type,
         },
         {
             "name": "OCR Engine",
-            "model": "EasyOCR",
+            "model": ocr_badge,
             "purpose": "Text recognition from images",
-            "type": "CNN + LSTM",
+            "type": ocr_type,
         },
         {
             "name": "Table Structure",

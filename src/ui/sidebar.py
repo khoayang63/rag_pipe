@@ -5,6 +5,7 @@ Provides toggles for all pipeline options, pipeline mode selector,
 and displays current configuration as formatted JSON.
 """
 
+import sys
 import streamlit as st
 from pipeline.converter import PipelineConfig
 
@@ -131,17 +132,87 @@ def render_sidebar() -> PipelineConfig:
                 help="Select OCR languages for text recognition",
             )
 
+            ocr_options = ["easyocr", "rapidocr", "tesseract", "tesseract_cli", "macocr", "kserve", "auto"]
+            if sys.platform != "darwin" and "macocr" in ocr_options:
+                ocr_options.remove("macocr")
+
             ocr_engine = st.selectbox(
                 "OCR Engine",
-                options=["easyocr", "rapidocr", "tesseract", "tesseract_cli", "macocr", "kserve", "auto"],
-                index=0,
+                options=ocr_options,
+                index=1,
                 help="OCR engine used by Docling (e.g. EasyOCR, RapidOCR, Tesseract, etc.)."
             )
+
+            # Check if selected OCR engine is installed
+            engine_installed = True
+            package_name = None
+            if ocr_engine == "easyocr":
+                package_name = "easyocr"
+                try:
+                    import easyocr
+                except ImportError:
+                    engine_installed = False
+            elif ocr_engine == "rapidocr":
+                package_name = "rapidocr"
+                try:
+                    import rapidocr
+                except ImportError:
+                    engine_installed = False
+            elif ocr_engine in ["tesseract", "tesseract_cli"]:
+                package_name = "pytesseract"
+                try:
+                    import pytesseract
+                except ImportError:
+                    engine_installed = False
+
+            if not engine_installed and package_name:
+                st.markdown(
+                    f"""
+                    <div style="display:flex; align-items:center; gap:8px; margin-top:0.2rem; margin-bottom:0.5rem; background:rgba(239,68,68,0.08); padding:8px 12px; border-radius:6px; border:1px solid rgba(239,68,68,0.2);">
+                        <span style="color:#ef4444; font-size:1.1rem; font-weight:bold;">⚠️</span>
+                        <span style="font-size:0.78rem; color:#f87171;">
+                            <strong>{ocr_engine.upper()}</strong> is not installed in venv.
+                        </span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if st.button(f"📥 Install {ocr_engine.upper()}", key=f"install_{ocr_engine}", use_container_width=True):
+                    with st.spinner(f"Installing {package_name}..."):
+                        import subprocess
+                        res = subprocess.run([sys.executable, "-m", "pip", "install", package_name], capture_output=True, text=True)
+                        if res.returncode == 0:
+                            st.success(f"Installed {ocr_engine.upper()}! Reloading...")
+                            st.rerun()
+                        else:
+                            st.error(f"Failed to install: {ocr_engine.upper()}")
+                            st.markdown(
+                                f"""
+                                <div style="background:rgba(239,68,68,0.05); padding:12px; border-radius:6px; border:1px dashed rgba(239,68,68,0.3); margin-top:0.5rem;">
+                                    <h4 style="margin:0 0 8px 0; font-size:0.85rem; color:#f87171;">💡 Manual Installation Instructions:</h4>
+                                    <p style="margin:0 0 8px 0; font-size:0.75rem; color:#9898a6;">
+                                        Installation failed because some files are locked (e.g., OpenCV/cv2 is currently in use). Please install it manually:
+                                    </p>
+                                    <ol style="margin:0; padding-left:16px; font-size:0.75rem; color:#9898a6; line-height:1.4;">
+                                        <li>Stop Streamlit (press <code>Ctrl+C</code> in your terminal).</li>
+                                        <li>Run the following command to install the package:</li>
+                                        <pre style="margin:6px 0; padding:6px; background:#18181b; border-radius:4px; font-size:0.7rem; color:#e4e4e7; border:1px solid #27272a;">venv\\Scripts\\pip install {package_name}</pre>
+                                        <li>Restart the application:</li>
+                                        <pre style="margin:6px 0; padding:6px; background:#18181b; border-radius:4px; font-size:0.7rem; color:#e4e4e7; border:1px solid #27272a;">streamlit run src/app.py</pre>
+                                    </ol>
+                                    <details style="margin-top:8px; font-size:0.7rem; color:#ef4444; cursor:pointer;">
+                                        <summary>View detailed system error</summary>
+                                        <pre style="margin-top:4px; padding:6px; background:#18181b; border-radius:4px; white-space:pre-wrap; word-break:break-all; color:#ef4444; max-height:150px; overflow-y:auto; border:1px solid rgba(239,68,68,0.2);">{res.stderr}</pre>
+                                    </details>
+                                </div>
+                                """,
+                                unsafe_allow_html=True
+                            )
 
             layout_model = st.selectbox(
                 "Layout Model",
                 options=["layout_v2", "heron", "heron_101", "egret_medium", "egret_large", "egret_xlarge"],
-                index=0,
+                index=1,
                 help="Layout analysis model used to segment page regions."
             )
 

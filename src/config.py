@@ -47,13 +47,11 @@ def get_hf_token() -> str:
 
 def login_huggingface(token: str) -> bool:
     """Login to HuggingFace Hub with the provided token."""
-    try:
-        from huggingface_hub import login
-        login(token=token, add_to_git_credential=False)
-        return True
-    except Exception as e:
-        print(f"HuggingFace login failed: {e}", file=sys.stderr)
-        return False
+    # Setting the HF_TOKEN environment variable is the standard, recommended
+    # way to authenticate in scripts and non-interactive environments.
+    # This avoids network/keyring hangs during huggingface_hub.login() on some systems.
+    os.environ["HF_TOKEN"] = token
+    return True
 
 
 def get_output_dir() -> Path:
