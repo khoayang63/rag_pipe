@@ -138,6 +138,13 @@ def render_sidebar() -> PipelineConfig:
                 help="OCR engine used by Docling (e.g. EasyOCR, RapidOCR, Tesseract, etc.)."
             )
 
+            layout_model = st.selectbox(
+                "Layout Model",
+                options=["layout_v2", "heron", "heron_101", "egret_medium", "egret_large", "egret_xlarge"],
+                index=0,
+                help="Layout analysis model used to segment page regions."
+            )
+
             config = PipelineConfig(
                 pipeline_mode="standard",
                 do_ocr=do_ocr,
@@ -151,6 +158,7 @@ def render_sidebar() -> PipelineConfig:
                 images_scale=images_scale,
                 ocr_languages=ocr_langs,
                 ocr_engine=ocr_engine,
+                layout_model=layout_model,
                 downstream_model=downstream_model,
             )
 
@@ -216,6 +224,7 @@ def render_sidebar() -> PipelineConfig:
                     "pipeline": "StandardPdfPipeline",
                     "do_ocr": config.do_ocr,
                     "ocr_engine": config.ocr_engine,
+                    "layout_model": config.layout_model,
                     "do_table_structure": config.do_table_structure,
                     "do_formula_enrichment": config.do_formula_enrichment,
                     "do_code_enrichment": config.do_code_enrichment,

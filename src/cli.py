@@ -111,6 +111,12 @@ def parse_args():
         default="easyocr",
         help="OCR engine to use for standard pipeline (Default: easyocr)."
     )
+    parser.add_argument(
+        "--layout-model",
+        choices=["layout_v2", "heron", "heron_101", "egret_medium", "egret_large", "egret_xlarge"],
+        default="layout_v2",
+        help="Layout analysis model to use for standard pipeline (Default: layout_v2)."
+    )
     
     # VLM options
     parser.add_argument(
@@ -181,6 +187,7 @@ def main():
         pipeline_mode=args.mode,
         do_ocr=args.do_ocr,
         ocr_engine=args.ocr_engine,
+        layout_model=args.layout_model,
         do_table_structure=args.do_table,
         do_formula_enrichment=args.do_formula,
         do_code_enrichment=args.do_code,

@@ -46,6 +46,9 @@ class PipelineConfig:
     ocr_languages: list = field(default_factory=lambda: ["en"])
     ocr_engine: str = "easyocr"
 
+    # Layout options
+    layout_model: str = "layout_v2"
+
     # VLM options (when pipeline_mode == "vlm")
     vlm_preset: str = "GRANITE_VISION_TRANSFORMERS"
     vlm_scale: float = 1.0
@@ -114,6 +117,28 @@ def create_standard_converter(config: PipelineConfig) -> DocumentConverter:
 
     if hasattr(options.ocr_options, "lang"):
         options.ocr_options.lang = config.ocr_languages
+
+    # Set Layout model options
+    from docling.datamodel.pipeline_options import (
+        DOCLING_LAYOUT_V2,
+        DOCLING_LAYOUT_HERON,
+        DOCLING_LAYOUT_HERON_101,
+        DOCLING_LAYOUT_EGRET_MEDIUM,
+        DOCLING_LAYOUT_EGRET_LARGE,
+        DOCLING_LAYOUT_EGRET_XLARGE,
+    )
+
+    layout_map = {
+        "layout_v2": DOCLING_LAYOUT_V2,
+        "heron": DOCLING_LAYOUT_HERON,
+        "heron_101": DOCLING_LAYOUT_HERON_101,
+        "egret_medium": DOCLING_LAYOUT_EGRET_MEDIUM,
+        "egret_large": DOCLING_LAYOUT_EGRET_LARGE,
+        "egret_xlarge": DOCLING_LAYOUT_EGRET_XLARGE,
+    }
+
+    layout_spec = layout_map.get(config.layout_model.lower(), DOCLING_LAYOUT_V2)
+    options.layout_options.model_spec = layout_spec
 
     converter = DocumentConverter(
         format_options={
@@ -235,6 +260,7 @@ def convert_document(
             "pipeline": "StandardPdfPipeline",
             "do_ocr": config.do_ocr,
             "ocr_engine": config.ocr_engine,
+            "layout_model": config.layout_model,
             "do_table_structure": config.do_table_structure,
             "do_formula_enrichment": config.do_formula_enrichment,
             "do_code_enrichment": config.do_code_enrichment,
