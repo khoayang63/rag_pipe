@@ -45,12 +45,19 @@ def parse_args():
     if sys.platform != "darwin" and "macocr" in ocr_choices:
         ocr_choices.remove("macocr")
     
-    # Required arguments
+    # Required/Optional arguments
     parser.add_argument(
         "input",
-        nargs="+",
+        nargs="*",
         type=str,
-        help="Path(s) to input document(s) (PDF, DOCX, PPTX, HTML, PNG, JPG, ...). Multiple files supported."
+        help="Path(s) to input document(s). Multiple files supported. Optional if using --batch-ingest."
+    )
+    
+    parser.add_argument(
+        "--batch-ingest",
+        action="store_true",
+        dest="batch_ingest",
+        help="Ingest all files in docs/incoming/ and move them to docs/processed/."
     )
     
     # Mode selection
@@ -144,6 +151,32 @@ def parse_args():
         dest="qwen_model",
         default="Qwen/Qwen3-VL-2B-Instruct",
         help="HuggingFace model ID for downstream description (e.g., 'Qwen/Qwen3-VL-2B-Instruct', 'HuggingFaceTB/SmolVLM-256M-Instruct'. Default: Qwen/Qwen3-VL-2B-Instruct)."
+    )
+    
+    # End-to-End Ingestion options
+    parser.add_argument(
+        "--ingest",
+        action="store_true",
+        dest="ingest",
+        help="Run chunking, generate embeddings and ingest into PostgreSQL pgvector."
+    )
+    parser.add_argument(
+        "--chunk-method",
+        choices=["hierarchical", "hybrid", "line_based"],
+        default="hybrid",
+        help="Chunking method to use for ingestion (Default: hybrid)."
+    )
+    parser.add_argument(
+        "--chunk-max-tokens",
+        type=int,
+        default=512,
+        help="Maximum tokens per chunk (Default: 512)."
+    )
+    parser.add_argument(
+        "--no-chunk-merge",
+        action="store_false",
+        dest="chunk_merge_peers",
+        help="Disable merging of peer elements in HybridChunker."
     )
     
     # Output path
@@ -244,6 +277,74 @@ def _process_single_file(input_path, args, config, gpu_info, out_dir, model_cach
     output_md_path = out_dir / f"{input_path.stem}.md"
     save_markdown(final_md, str(output_md_path))
     
+    # Database Ingestion (End-to-End Ingestion Pipeline)
+    if args.ingest:
+        print(f"\n[STEP 4/4] Chunking & Ingesting into pgvector...")
+        try:
+            # 1. Run Chunking
+            from pipeline.chunker import run_chunking
+            print(f"Chunking document using '{args.chunk_method}' chunker (max_tokens={args.chunk_max_tokens}, merge_peers={args.chunk_merge_peers})...")
+            chunk_result = run_chunking(
+                document=result.document,
+                method=args.chunk_method,
+                max_tokens=args.chunk_max_tokens,
+                merge_peers=args.chunk_merge_peers,
+            )
+            print(f"Generated {chunk_result.num_chunks} chunks.")
+            
+            if chunk_result.num_chunks > 0:
+                # 2. Generate Embeddings using BAAI/bge-m3
+                from pipeline.embedder import get_embedder
+                print("Loading BAAI/bge-m3 embedding model...")
+                embedder = get_embedder()
+                
+                print("Generating dense embeddings (batch size = 16)...")
+                payload_chunks = []
+                texts_to_embed = []
+                
+                for chunk in chunk_result.chunks:
+                    payload_chunks.append({
+                        "index": chunk.index,
+                        "text": chunk.text,
+                        "contextualized": chunk.contextualized,
+                        "page_no": chunk.page_no,
+                        "chunk_type": chunk.chunk_type,
+                        "headings": chunk.headings,
+                        "captions": chunk.captions
+                    })
+                    texts_to_embed.append(chunk.contextualized)
+                
+                # Batch embed
+                batch_size = 16
+                all_embeddings = []
+                for i in range(0, len(texts_to_embed), batch_size):
+                    batch_texts = texts_to_embed[i:i+batch_size]
+                    batch_embs = embedder.get_embeddings(batch_texts)
+                    all_embeddings.extend(batch_embs)
+                
+                for idx, emb in enumerate(all_embeddings):
+                    payload_chunks[idx]["embedding"] = emb
+                
+                # 3. Save to database
+                from pipeline.vector_store import VectorStore
+                db = VectorStore()
+                conn_info = db.test_connection()
+                if not conn_info["connected"]:
+                    print(f"[ERROR] Cannot connect to PostgreSQL: {conn_info['error']}")
+                else:
+                    doc_id = str(input_path.stem)  # Use filename stem as ID
+                    print(f"Saving chunks to PostgreSQL database '{db.conn_params['database']}'...")
+                    ingested_count = db.ingest_document(
+                        doc_id=doc_id,
+                        doc_name=input_path.name,
+                        chunks=payload_chunks
+                    )
+                    print(f"[SUCCESS] Successfully ingested {ingested_count} chunks into pgvector!")
+        except Exception as e:
+            print(f"[ERROR] Chunking or DB Ingestion failed: {e}")
+            import traceback
+            traceback.print_exc()
+    
     # Print timings
     if result.timings:
         print("\n" + "=" * 65)
@@ -275,12 +376,52 @@ def _process_single_file(input_path, args, config, gpu_info, out_dir, model_cach
 def main():
     args = parse_args()
     
-    # 1. Validate Input Files
-    input_paths = [Path(p) for p in args.input]
-    for ip in input_paths:
-        if not ip.exists():
-            print(f"\n[ERROR] File does not exist: {ip}")
+    # Check if batch-ingest is enabled
+    if args.batch_ingest:
+        incoming_dir = Path("docs/incoming")
+        processed_dir = Path("docs/processed")
+        incoming_dir.mkdir(parents=True, exist_ok=True)
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Scan files in docs/incoming
+        supported_exts = {".pdf", ".docx", ".pptx", ".html", ".htm", ".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp"}
+        files_to_process = []
+        for item in incoming_dir.iterdir():
+            if item.is_file() and item.suffix.lower() in supported_exts:
+                files_to_process.append(item)
+                
+        if not files_to_process:
+            print("\n[INFO] No files found to process in 'docs/incoming'.")
+            # If the root of docs/ contains files, migrate them automatically
+            root_docs = []
+            for item in Path("docs").iterdir():
+                if item.is_file() and item.suffix.lower() in supported_exts:
+                    root_docs.append(item)
+            if root_docs:
+                print(f"[INFO] Found {len(root_docs)} files in the root of 'docs'. Moving them to 'docs/incoming' for batch processing...")
+                for item in root_docs:
+                    dest = incoming_dir / item.name
+                    import shutil
+                    try:
+                        shutil.move(str(item), str(dest))
+                        files_to_process.append(dest)
+                    except Exception as e:
+                        print(f"[ERROR] Could not move {item.name}: {e}")
+            else:
+                print("[INFO] Please place documents to ingest inside 'docs/incoming'.")
+                sys.exit(0)
+        
+        input_paths = files_to_process
+        args.ingest = True  # In batch mode, we force database ingestion
+    else:
+        if not args.input:
+            print("[ERROR] Please specify input document(s) or use --batch-ingest.")
             sys.exit(1)
+        input_paths = [Path(p) for p in args.input]
+        for ip in input_paths:
+            if not ip.exists():
+                print(f"\n[ERROR] File does not exist: {ip}")
+                sys.exit(1)
     
     is_batch = len(input_paths) > 1
     
@@ -292,7 +433,8 @@ def main():
         for i, ip in enumerate(input_paths, 1):
             print(f"  [{i}] {ip.resolve()}")
     else:
-        print(f"Input file : {input_paths[0].resolve()}")
+        if input_paths:
+            print(f"Input file : {input_paths[0].resolve()}")
     print(f"Pipeline   : {args.mode.upper()}")
     print(f"Output dir : {Path(args.output_dir).resolve()}")
     print("-" * 65)
@@ -361,6 +503,22 @@ def main():
                 count_image_placeholders(final_md),
                 str(output_md_path),
             ])
+            
+            # If batch-ingest mode is active, move file from incoming to processed
+            if args.batch_ingest:
+                try:
+                    processed_dir = Path("docs/processed")
+                    processed_path = processed_dir / input_path.name
+                    # Avoid file naming collision
+                    if processed_path.exists():
+                        stem, suffix = input_path.stem, input_path.suffix
+                        processed_path = processed_dir / f"{stem}_{int(time.time())}{suffix}"
+                    
+                    import shutil
+                    shutil.move(str(input_path), str(processed_path))
+                    print(f"[SUCCESS] Moved processed file to: {processed_path}")
+                except Exception as e:
+                    print(f"[WARNING] Could not move processed file {input_path.name}: {e}")
     
     # 6. Final Summary
     total_elapsed = time.time() - global_start

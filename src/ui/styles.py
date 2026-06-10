@@ -715,6 +715,347 @@ def inject_custom_css():
         div[class*="st-key-delete_file_"] > div > button:active {
             transform: scale(0.95) !important;
         }
+
+        /* ============================================
+           CHUNKING VIEWER
+           ============================================ */
+
+        /* Chunk Card */
+        .chunk-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-left: 3px solid var(--accent);
+            border-radius: var(--radius-sm);
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+        .chunk-card:hover {
+            border-color: var(--border-hover);
+            background: var(--bg-card-hover);
+        }
+
+        .chunk-card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .chunk-card-index {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 2px 10px;
+            border-radius: 999px;
+        }
+
+        .chunk-card-tokens {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+        .chunk-token-count {
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .chunk-type-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.68rem;
+            padding: 2px 8px;
+            border-radius: 999px;
+            border: 1px solid;
+            margin-left: auto;
+        }
+
+        .chunk-card-text {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            line-height: 1.55;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 8px 10px;
+            background: rgba(0,0,0,0.15);
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+        }
+
+        /* Expandable Chunk & Figure Text styling */
+        details.chunk-expandable, details.fig-expandable {
+            display: inline;
+        }
+        
+        details.chunk-expandable > summary, details.fig-expandable > summary {
+            list-style: none;
+            cursor: pointer;
+            outline: none;
+            padding: 0;
+            margin: 0;
+            background: transparent;
+            border: none;
+            display: inline;
+        }
+        
+        details.chunk-expandable > summary::-webkit-details-marker,
+        details.fig-expandable > summary::-webkit-details-marker {
+            display: none;
+        }
+        
+        details.chunk-expandable .open-view,
+        details.fig-expandable .open-view {
+            display: none;
+        }
+        
+        details.chunk-expandable[open] .closed-view,
+        details.fig-expandable[open] .closed-view {
+            display: none;
+        }
+        
+        details.chunk-expandable[open] .open-view,
+        details.fig-expandable[open] .open-view {
+            display: inline;
+        }
+        
+        .chunk-more-btn, .chunk-less-btn,
+        .fig-more-btn, .fig-less-btn {
+            color: #60a5fa;
+            font-weight: 600;
+            margin-left: 6px;
+            cursor: pointer;
+            text-decoration: underline;
+            transition: color 0.2s;
+            font-style: normal;
+        }
+        
+        .chunk-more-btn:hover, .chunk-less-btn:hover,
+        .fig-more-btn:hover, .fig-less-btn:hover {
+            color: #34d399;
+        }
+
+        /* Override max-height limit on chunk-card-text when details is open */
+        .chunk-card-text:has(details.chunk-expandable[open]) {
+            max-height: none;
+        }
+
+        .chunk-truncated {
+            color: var(--text-muted);
+            font-style: italic;
+            font-size: 0.72rem;
+        }
+
+        /* Heading & Caption Badges */
+        .chunk-headings, .chunk-captions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .chunk-heading-badge {
+            background: rgba(52, 211, 153, 0.08);
+            color: var(--accent);
+            font-size: 0.72rem;
+            padding: 2px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(52, 211, 153, 0.15);
+            font-weight: 500;
+        }
+
+        .chunk-caption-badge {
+            background: rgba(96, 165, 250, 0.08);
+            color: var(--info);
+            font-size: 0.7rem;
+            padding: 2px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(96, 165, 250, 0.12);
+            font-style: italic;
+        }
+
+        /* Vector Store Search Result Card */
+        .search-result-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-left: 3px solid var(--info);
+            border-radius: var(--radius-sm);
+            padding: 14px 16px;
+            margin-bottom: 12px;
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+        .search-result-card:hover {
+            border-color: var(--border-hover);
+            background: var(--bg-card-hover);
+        }
+        
+        .search-card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        
+        .search-card-rank {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            font-weight: 600;
+            background: rgba(96, 165, 250, 0.15);
+            color: var(--info);
+            padding: 2px 10px;
+            border-radius: 999px;
+        }
+        
+        .search-score {
+            font-size: 0.76rem;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        /* Stats Bar */
+        .chunk-stats-bar {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            align-items: center;
+            padding: 12px 18px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            margin-bottom: 1rem;
+        }
+
+        .chunk-stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+        .chunk-stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .chunk-stat-label {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        /* Comparison Table */
+        .chunk-compare-table-wrap {
+            overflow-x: auto;
+            margin-bottom: 1rem;
+        }
+        .chunk-compare-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+            background: var(--bg-card);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+        }
+        .chunk-compare-table thead th {
+            background: rgba(255,255,255,0.04);
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .chunk-compare-table tbody td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+        }
+        .chunk-compare-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        .chunk-compare-table tbody tr:hover {
+            background: rgba(255,255,255,0.02);
+        }
+
+        /* Bar Chart */
+        .chunk-bars-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 16px 18px;
+        }
+
+        .chunk-bar-group {
+            margin-bottom: 16px;
+        }
+        .chunk-bar-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .chunk-bar-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .chunk-bar-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        .chunk-bar-metric {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            width: 55px;
+            flex-shrink: 0;
+            text-align: right;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .chunk-bar-track {
+            flex: 1;
+            height: 14px;
+            background: rgba(255,255,255,0.04);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .chunk-bar-fill {
+            height: 100%;
+            border-radius: 999px;
+            transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+            min-width: 2px;
+        }
+
+        .chunk-bar-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            width: 50px;
+            flex-shrink: 0;
+        }
+
+        /* Placeholder */
+        .chunk-placeholder {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: var(--text-muted);
+        }
+        .chunk-placeholder-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.4;
+        }
+        .chunk-placeholder p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin: 0.3rem 0;
+        }
         </style>
         """,
         unsafe_allow_html=True,

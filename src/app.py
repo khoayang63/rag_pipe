@@ -23,6 +23,8 @@ from ui.upload import render_upload
 from ui.markdown_viewer import render_markdown_viewer
 from ui.figure_gallery import render_figure_gallery
 from ui.pipeline_info import render_pipeline_info
+from ui.chunking_viewer import render_chunking_viewer
+from ui.vector_store_viewer import render_vector_store_viewer
 from pipeline.converter import convert_document, convert_documents
 from pipeline.figure_extractor import extract_figures
 from pipeline.enrichment import enrich_markdown, count_image_placeholders
@@ -324,7 +326,9 @@ if st.session_state.doc_results:
             result_tabs = st.tabs([
                 "Markdown Output",
                 "Extracted Figures",
+                "Chunking",
                 "Pipeline Info",
+                "Vector DB",
             ])
 
             # Tab 1: Markdown
@@ -345,12 +349,26 @@ if st.session_state.doc_results:
                 else:
                     st.info("No figures found in this document.")
 
-            # Tab 3: Pipeline Info
+            # Tab 3: Chunking
             with result_tabs[2]:
+                render_chunking_viewer(
+                    document=result.document,
+                    doc_id=str(doc_idx),
+                )
+
+            # Tab 4: Pipeline Info
+            with result_tabs[3]:
                 render_pipeline_info(
                     conversion_result=result,
                     figures_count=len(figures),
                     description_result=doc_data.get("description_result"),
+                )
+
+            # Tab 5: Vector DB
+            with result_tabs[4]:
+                render_vector_store_viewer(
+                    doc_name=filename,
+                    doc_id=str(doc_idx),
                 )
 
 else:

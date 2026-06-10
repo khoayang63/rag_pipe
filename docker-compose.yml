@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL with pgvector extension
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ekb-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ekb
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: 123456
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d ekb"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ekb-net
+
+  # ---------------------------------------------------------------------------
+  # pgweb - Lightweight web-based PostgreSQL client (GUI)
+  # ---------------------------------------------------------------------------
+  pgweb:
+    image: sosedoff/pgweb:latest
+    container_name: ekb-pgweb
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - DATABASE_URL=postgres://admin:123456@postgres:5432/ekb?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ekb-net
+
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  ekb-net:
+    driver: bridge

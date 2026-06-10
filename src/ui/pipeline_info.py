@@ -128,21 +128,21 @@ def _get_standard_flow_html(conversion_result=None) -> str:
     layout_display = layout_display_map.get(layout_model.lower(), "Layout Heron")
 
     stages = [
-        ("Document Input", "DocumentConverter", "Detects format, routes to pipeline"),
-        ("Layout Analysis", layout_display, "Page segmentation and region classification"),
-        ("OCR", ocr_display, "Text recognition from scanned content"),
-        ("Table Extraction", "TableFormer", "Table structure and cell content extraction"),
-        ("Formula Extraction", "Built-in", "Mathematical formula detection and LaTeX"),
-        ("Code Extraction", "Built-in", "Code block detection and language tagging"),
-        ("Figure Extraction", "Built-in", "Picture cropping and provenance tracking"),
-        ("Markdown Export", "Docling Core", "Structured document to markdown conversion"),
-        ("Figure Description", desc_display, "VLM-based visual description generation"),
-        ("Markdown Enrichment", "Post-processing", "Insert figure images and descriptions"),
+        ("Document Input", "Detects format, routes to pipeline"),
+        ("Layout Analysis", "Page segmentation and region classification"),
+        ("OCR", "Text recognition from scanned content"),
+        ("Table Extraction", "Table structure and cell content extraction"),
+        ("Formula Extraction", "Mathematical formula detection and LaTeX"),
+        ("Code Extraction", "Code block detection and language tagging"),
+        ("Figure Extraction", "Picture cropping and provenance tracking"),
+        ("Markdown Export", "Structured document to markdown conversion"),
+        ("Figure Description", "VLM-based visual description generation"),
+        ("Markdown Enrichment", "Insert figure images and descriptions"),
     ]
 
     flow_html = '<div class="pipeline-flow">'
-    for name, model, desc in stages:
-        flow_html += f'<div class="pipeline-stage"><span class="stage-name">{name}</span><span class="stage-model">{model}</span><span class="stage-status">{desc}</span></div>'
+    for name, desc in stages:
+        flow_html += f'<div class="pipeline-stage"><span class="stage-name">{name}</span><span class="stage-status">{desc}</span></div>'
     flow_html += "</div>"
     return flow_html
 
@@ -155,15 +155,15 @@ def _get_vlm_flow_html(conversion_result=None) -> str:
         preset = cfg.get("vlm_preset", "Granite Vision").replace("_", " ").title()
 
     stages = [
-        ("Document Input", "DocumentConverter", "Format detection and routing"),
-        ("Page Rendering", "VlmPipeline", "Page-level image rendering"),
-        ("VLM Inference", preset, "End-to-end vision-language conversion"),
-        ("Markdown Export", "Docling Core", "Structured output to markdown"),
+        ("Document Input", "Format detection and routing"),
+        ("Page Rendering", "Page-level image rendering"),
+        ("VLM Inference", "End-to-end vision-language conversion"),
+        ("Markdown Export", "Structured output to markdown"),
     ]
 
     flow_html = '<div class="pipeline-flow">'
-    for name, model, desc in stages:
-        flow_html += f'<div class="pipeline-stage"><span class="stage-name">{name}</span><span class="stage-model">{model}</span><span class="stage-status">{desc}</span></div>'
+    for name, desc in stages:
+        flow_html += f'<div class="pipeline-stage"><span class="stage-name">{name}</span><span class="stage-status">{desc}</span></div>'
     flow_html += "</div>"
     return flow_html
 
@@ -322,12 +322,6 @@ def _render_model_details(conversion_result, description_result):
             "model": ocr_badge,
             "purpose": "Text recognition from images",
             "type": ocr_type,
-        },
-        {
-            "name": "Table Structure",
-            "model": "TableFormer",
-            "purpose": "Table cell detection and structure",
-            "type": "Transformer",
         },
         {
             "name": "Figure Description",

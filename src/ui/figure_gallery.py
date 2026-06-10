@@ -84,11 +84,25 @@ def _render_figure_card(fig, description: str | None = None):
         st.warning(f"Could not load image: {fig.image_path}")
         return
 
+    import html as html_module
+
     # Metadata
     caption_text = fig.caption or "No caption"
-    caption_display = (
-        caption_text[:80] + "..." if len(caption_text) > 80 else caption_text
-    )
+    is_truncated = len(caption_text) > 80
+    if is_truncated:
+        truncated_part = caption_text[:80]
+        safe_truncated = html_module.escape(truncated_part)
+        safe_full = html_module.escape(caption_text)
+        caption_html_content = (
+            '<details class="fig-expandable">'
+            '  <summary>'
+            '    <span class="closed-view">' + safe_truncated + '<span class="fig-more-btn">...More</span></span>'
+            '    <span class="open-view">' + safe_full + '<span class="fig-less-btn">...Less</span></span>'
+            '  </summary>'
+            '</details>'
+        )
+    else:
+        caption_html_content = html_module.escape(caption_text)
 
     bbox_str = ""
     if fig.bbox:
@@ -125,7 +139,7 @@ def _render_figure_card(fig, description: str | None = None):
             <p style="
                 font-size:0.82rem; color:#9898a6;
                 margin:0 0 4px 0; line-height:1.4;
-            ">{caption_display}</p>
+            ">{caption_html_content}</p>
             <p style="
                 font-size:0.7rem; color:#3d3d4a;
                 font-family:'JetBrains Mono',monospace;

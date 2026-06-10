@@ -162,6 +162,7 @@ markdown_output/
 *.pdf
 *.md
 !README.md
+!ARCHITECTURE.md
 !walkthrough.md
 !task.md
 !implementation_plan.md

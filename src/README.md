@@ -12,6 +12,7 @@ A standalone web application for document processing using [Docling](https://git
 - **VLM figure description**: Generate visual descriptions using Qwen3-VL-2B-Instruct
 - **Markdown enrichment**: Replace `<!-- image -->` placeholders with figure images + VLM descriptions
 - **Pipeline info dashboard**: View models used at each stage, processing times, GPU status
+- **pgvector Ingestion & Search**: Generate dense embeddings using `BAAI/bge-m3` and ingest chunks into PostgreSQL. Compare between Vector search, BM25 keyword search, and Hybrid RRF (Reciprocal Rank Fusion) search.
 
 ## Setup
 
@@ -35,7 +36,19 @@ pip install -r requirements.txt
 
 > **Note**: For GPU support (required for Qwen3-VL figure description), install the appropriate PyTorch version for your CUDA version from [pytorch.org](https://pytorch.org/get-started/locally/).
 
-### 3. Set environment variable
+### 3. Start PostgreSQL Database & Web GUI (Docker)
+
+This application requires PostgreSQL with the `pgvector` extension to run vector search. Spin up the containers in the background:
+
+```bash
+docker compose up -d
+```
+
+This starts:
+- **PostgreSQL Database** on `localhost:5432` (User: `admin`, Password: `123456`, Database: `ekb`).
+- **pgweb Web GUI** on `http://localhost:8081` for database management.
+
+### 4. Set environment variable
 
 ```bash
 # Windows (Command Prompt)
@@ -50,13 +63,30 @@ export HF_TOKEN=hf_your_token_here
 
 Get your HuggingFace token from: https://huggingface.co/settings/tokens
 
-### 4. Run the application
+### 5. Run the application
 
 ```bash
 streamlit run src/app.py
 ```
 
 The app will open in your browser at `http://localhost:8501`.
+
+## Pre-downloading Models
+
+Large models (such as the embedding model and vision-language models for figure description) total several gigabytes and can take a long time to download on first run. If you attempt to download them directly from the Streamlit web interface, the UI might freeze because the download blocks the Streamlit thread.
+
+We highly recommend pre-downloading the models using the provided script before starting Streamlit:
+
+```bash
+venv\Scripts\python.exe scratch/download_model.py
+```
+
+This script will show an interactive menu to choose which models to pre-download:
+1. **[Recommended] Default Setup** — Downloads `BAAI/bge-m3` + `Qwen3-VL-2B-Instruct`
+2. **BAAI/bge-m3** (2.2 GB) — Required for Vector Search & DB
+3. **Qwen/Qwen3-VL-2B-Instruct** (4.5 GB) — Default recommended VLM for figure description (GPU required)
+4. **Qwen/Qwen2-VL-2B-Instruct** (4.5 GB) — Alternate 2B parameter VLM
+5. **HuggingFaceTB/SmolVLM-256M-Instruct** (0.8 GB) — Ultra-light VLM (runs fast on CPUs or low VRAM)
 
 ## Usage
 
@@ -94,10 +124,20 @@ python src/cli.py path/to/document.pdf --mode vlm --vlm-preset GRANITEDOCLING_TR
 
 # Specify a custom output directory (Default is cli_output/)
 python src/cli.py path/to/document.pdf -o my_output_dir
+
+# Run end-to-end RAG Ingestion (convert, extract figures, chunk, generate dense embeddings and ingest into pgvector)
+python src/cli.py path/to/document.pdf --ingest
+
+# Run end-to-end Ingestion with custom chunker configurations
+python src/cli.py path/to/document.pdf --ingest --chunk-method hybrid --chunk-max-tokens 256 --no-chunk-merge
+
+# Batch Ingestion of all files in docs/incoming/ and move them to docs/processed/
+python src/cli.py --batch-ingest
 ```
 
 #### CLI Command Options:
-* `input`: Path to input document (required).
+* `input`: Path to input document (optional if using `--batch-ingest`).
+* `--batch-ingest`: Ingest all files inside `docs/incoming/` and automatically move them to `docs/processed/` on completion.
 * `--mode {standard,vlm}`: Pipeline mode (default: `standard`).
 * `--no-ocr`: Disable OCR.
 * `--no-table`: Disable table structure extraction.
@@ -109,6 +149,10 @@ python src/cli.py path/to/document.pdf -o my_output_dir
 * `--vlm-preset`: VLM model preset for VLM mode (`GRANITE_VISION_TRANSFORMERS`, `GRANITEDOCLING_TRANSFORMERS`, `SMOLDOCLING_TRANSFORMERS`).
 * `--enrich` (or `--use-qwen`): Generate figure descriptions downstream and enrich markdown.
 * `--desc-model` (or `--qwen-model`): Vision model ID for downstream description (default: `Qwen/Qwen3-VL-2B-Instruct`).
+* `--ingest`: Enable end-to-end PostgreSQL (pgvector) ingestion.
+* `--chunk-method {hierarchical,hybrid,line_based}`: Chunking method to use (default: `hybrid`).
+* `--chunk-max-tokens`: Max tokens per chunk (default: `512`).
+* `--no-chunk-merge`: Disable merging adjacent small chunks in hybrid chunker.
 * `-o`, `--output-dir`: Directory to save outputs (default: `cli_output`).
 * `-h`, `--help`: Show help message and options.
 
@@ -136,22 +180,6 @@ src/
     └── pipeline_info.py      # Pipeline architecture info
 ```
 
-## Pipeline Architecture
+## System Architecture & Technical Design
 
-```
-Document Input
-  ↓
-DocumentConverter (format detection)
-  ↓
-StandardPdfPipeline / VlmPipeline
-  ↓
-OCR → Table → Formula → Code → Figure Extraction
-  ↓
-Markdown Export
-  ↓
-Qwen3-VL Figure Description (optional, GPU)
-  ↓
-Markdown Enrichment
-  ↓
-Ready for RAG (Chunking → Embedding)
-```
+For deep details on data flow, machine learning models, database schema indexes, and hybrid search (Reciprocal Rank Fusion - RRF) algorithms, please refer to the [ARCHITECTURE.md](ARCHITECTURE.md) document.
