@@ -212,13 +212,16 @@ class VectorStore:
                 """, (query_text, query_text, limit))
                 return [dict(row) for row in cur.fetchall()]
 
-    def hybrid_search(self, query_text: str, query_embedding: List[float], limit: int = 5, k: int = 60) -> List[Dict[str, Any]]:
+    def hybrid_search(self, query_text: str, query_embedding: List[float], limit: int = 5, k: int = 60, use_rerank: bool = False, rerank_top_k: int = 10) -> List[Dict[str, Any]]:
         """
         Perform hybrid search using Reciprocal Rank Fusion (RRF).
         Fuses results from Vector Search and BM25 FTS.
+        Optionally reranks the top RRF candidates using BGE-Reranker-v2-m3.
         """
         # Fetch more candidates from each search method to perform fusion
         candidate_limit = max(limit * 5, 50)
+        if use_rerank:
+            candidate_limit = max(candidate_limit, rerank_top_k * 2)
         
         vector_results = self.vector_search(query_embedding, limit=candidate_limit)
         keyword_results = self.keyword_search(query_text, limit=candidate_limit)
@@ -243,6 +246,7 @@ class VectorStore:
                 "fts_rank": None,
                 "vector_score": None,
                 "fts_score": None,
+                "rerank_score": None,
             }
             
         # Add vector ranks
@@ -253,7 +257,7 @@ class VectorStore:
             rrf_scores[cid]["vector_rank"] = rank + 1
             rrf_scores[cid]["vector_score"] = float(row["score"])
             rrf_scores[cid]["rrf_score"] += 1.0 / (k + (rank + 1))
-            
+                
         # Add keyword FTS ranks
         for rank, row in enumerate(keyword_results):
             cid = row["id"]
@@ -265,4 +269,22 @@ class VectorStore:
             
         # Sort by RRF score descending
         sorted_candidates = sorted(rrf_scores.values(), key=lambda x: x["rrf_score"], reverse=True)
+        
+        if use_rerank and sorted_candidates:
+            # Take the top RRF candidates to rerank
+            top_rrf = sorted_candidates[:rerank_top_k]
+            passages = [c["contextualized"] for c in top_rrf]
+            
+            # Lazy import BgeReranker to prevent loading during store module import
+            from pipeline.processing.reranker import get_reranker
+            reranker = get_reranker()
+            
+            rerank_scores = reranker.compute_scores(query_text, passages)
+            for idx, score in enumerate(rerank_scores):
+                top_rrf[idx]["rerank_score"] = score
+                
+            # Sort the reranked subset by rerank_score descending
+            sorted_reranked = sorted(top_rrf, key=lambda x: x["rerank_score"], reverse=True)
+            return sorted_reranked[:limit]
+            
         return sorted_candidates[:limit]

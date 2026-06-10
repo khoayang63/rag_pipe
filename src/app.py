@@ -25,9 +25,9 @@ from ui.figure_gallery import render_figure_gallery
 from ui.pipeline_info import render_pipeline_info
 from ui.chunking_viewer import render_chunking_viewer
 from ui.vector_store_viewer import render_vector_store_viewer
-from pipeline.converter import convert_document, convert_documents
-from pipeline.figure_extractor import extract_figures
-from pipeline.enrichment import enrich_markdown, count_image_placeholders
+from pipeline.parsers.doc_converter import convert_document, convert_documents
+from pipeline.parsers.figure_extractor import extract_figures
+from pipeline.parsers.enrichment import enrich_markdown, count_image_placeholders
 
 
 # ──────────────────────────────────────────────
@@ -262,7 +262,7 @@ if st.session_state.doc_results:
                     )
 
                 if describe_clicked:
-                    from pipeline.vlm_describer import describe_figures, load_model
+                    from pipeline.parsers.vlm_describer import describe_figures, load_model
 
                     with st.status(f"Describing figures for {filename}...", expanded=True) as desc_status:
                         # Load model (cached in session state, reloaded if model ID changes)

@@ -673,21 +673,22 @@ def inject_custom_css():
         /* ============================================
            FILE CARD & DELETE BUTTON STYLE
            ============================================ */
-        div[class*="st-key-file_card_"] {
+        .file-card-v2 {
             background: rgba(26, 26, 34, 0.7) !important;
             backdrop-filter: blur(16px) !important;
             -webkit-backdrop-filter: blur(16px) !important;
             border: 1px solid rgba(255, 255, 255, 0.06) !important;
             border-radius: var(--radius-md) !important;
-            padding: 0.7rem 1rem !important;
+            padding: 0.8rem 1.2rem !important;
             margin-top: 0.5rem !important;
             box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
             transition: all var(--transition-smooth) !important;
         }
 
-        div[class*="st-key-file_card_"]:hover {
+        .file-card-v2:hover {
             border-color: rgba(255, 255, 255, 0.1) !important;
             box-shadow: var(--shadow-card), var(--shadow-glow), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+            background: rgba(30, 30, 40, 0.85) !important;
         }
 
         /* Style for delete buttons in the file list */

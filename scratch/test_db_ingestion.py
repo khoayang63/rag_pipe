@@ -3,7 +3,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import random
-from pipeline.vector_store import VectorStore
+from pipeline.indexer.postgres_store import VectorStore
 
 def test_database_integration():
     db = VectorStore()

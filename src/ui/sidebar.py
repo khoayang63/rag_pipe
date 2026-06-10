@@ -7,7 +7,7 @@ and displays current configuration as formatted JSON.
 
 import sys
 import streamlit as st
-from pipeline.converter import PipelineConfig
+from pipeline.parsers.doc_converter import PipelineConfig
 
 
 def render_sidebar() -> PipelineConfig:

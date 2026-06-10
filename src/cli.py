@@ -30,9 +30,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from config import get_hf_token, login_huggingface, check_gpu_available
-from pipeline.converter import PipelineConfig, convert_document, convert_documents, detect_input_format
-from pipeline.figure_extractor import extract_figures
-from pipeline.enrichment import enrich_markdown, count_image_placeholders, save_markdown
+from pipeline.parsers.doc_converter import PipelineConfig, convert_document, convert_documents, detect_input_format
+from pipeline.parsers.figure_extractor import extract_figures
+from pipeline.parsers.enrichment import enrich_markdown, count_image_placeholders, save_markdown
 from tabulate import tabulate
 
 
@@ -243,7 +243,7 @@ def _process_single_file(input_path, args, config, gpu_info, out_dir, model_cach
             print(f"\n[WARNING] CUDA is not available. Skipping downstream VLM enrichment.")
         else:
             print(f"\n[STEP 3/3] Running downstream figure description using {args.qwen_model}...")
-            from pipeline.vlm_describer import describe_figures, load_model
+            from pipeline.parsers.vlm_describer import describe_figures, load_model
             
             # Use cached model if available
             if model_cache and model_cache.get("model") is not None:
@@ -282,7 +282,7 @@ def _process_single_file(input_path, args, config, gpu_info, out_dir, model_cach
         print(f"\n[STEP 4/4] Chunking & Ingesting into pgvector...")
         try:
             # 1. Run Chunking
-            from pipeline.chunker import run_chunking
+            from pipeline.processing.chunker import run_chunking
             print(f"Chunking document using '{args.chunk_method}' chunker (max_tokens={args.chunk_max_tokens}, merge_peers={args.chunk_merge_peers})...")
             chunk_result = run_chunking(
                 document=result.document,
@@ -294,7 +294,7 @@ def _process_single_file(input_path, args, config, gpu_info, out_dir, model_cach
             
             if chunk_result.num_chunks > 0:
                 # 2. Generate Embeddings using BAAI/bge-m3
-                from pipeline.embedder import get_embedder
+                from pipeline.processing.embedder import get_embedder
                 print("Loading BAAI/bge-m3 embedding model...")
                 embedder = get_embedder()
                 
@@ -326,7 +326,7 @@ def _process_single_file(input_path, args, config, gpu_info, out_dir, model_cach
                     payload_chunks[idx]["embedding"] = emb
                 
                 # 3. Save to database
-                from pipeline.vector_store import VectorStore
+                from pipeline.indexer.postgres_store import VectorStore
                 db = VectorStore()
                 conn_info = db.test_connection()
                 if not conn_info["connected"]:

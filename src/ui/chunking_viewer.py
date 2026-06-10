@@ -7,7 +7,7 @@ Provides two modes:
 """
 
 import streamlit as st
-from pipeline.chunker import (
+from pipeline.processing.chunker import (
     run_chunking,
     run_all_chunking,
     CHUNKER_INFO,

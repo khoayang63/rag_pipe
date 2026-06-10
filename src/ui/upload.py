@@ -84,7 +84,7 @@ def render_upload() -> list[str]:
                 f"""
                 <div class="glass-card animate-in" style="margin-top:1rem; padding:0.8rem 1.2rem;">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="font-size:1.2rem;">📑</span>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                         <span style="font-size:0.88rem; font-weight:600; color:#f0f0f3;">
                             {len(active_files)} files selected
                         </span>
@@ -110,69 +110,11 @@ def render_upload() -> list[str]:
                 else f"{file_size_kb / 1024:.1f} MB"
             )
 
-            # Container for file card
-            with st.container(key=f"file_card_{idx}"):
-                col_icon, col_info, col_delete = st.columns([0.8, 8.2, 1.0])
-                
-                with col_icon:
-                    st.markdown(
-                        f"""
-                        <div style="
-                            width:36px; height:36px;
-                            background: rgba(52, 211, 153, 0.1);
-                            border-radius: 8px;
-                            display:flex; align-items:center; justify-content:center;
-                            color: #34d399; font-weight:600; font-size:0.65rem;
-                            text-transform: uppercase;
-                        ">{file_ext.lstrip('.') if len(file_ext) <= 5 else 'DOC'}</div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                
-                with col_info:
-                    st.markdown(
-                        f"""
-                        <div style="display:flex; flex-direction:column; justify-content:center; height:36px;">
-                            <p style="margin:0; font-weight:600; color:#f0f0f3; font-size:0.88rem; line-height:1.2;
-                                      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                                {uploaded_file.name}
-                            </p>
-                            <p style="margin:2px 0 0 0; font-size:0.75rem; color:#5c5c6e; line-height:1.2;">
-                                {file_type} &middot; {file_size_display} &middot; <span style="color:#34d399; font-weight:500;">Ready</span>
-                            </p>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                
-                with col_delete:
-                    # Render delete button at the rightmost
-                    if st.button("🗑️", key=f"delete_file_{idx}", help="Remove file"):
-                        # Mark as deleted
-                        st.session_state.deleted_files.add(uploaded_file.name)
-                        
-                        # Clean up temp file
-                        cache_key = (uploaded_file.name, uploaded_file.size)
-                        if cache_key in st.session_state.upload_cache:
-                            old_path = st.session_state.upload_cache[cache_key]
-                            try:
-                                if os.path.exists(old_path):
-                                    os.remove(old_path)
-                                    parent_dir = os.path.dirname(old_path)
-                                    if os.path.isdir(parent_dir) and not os.listdir(parent_dir):
-                                        os.rmdir(parent_dir)
-                            except Exception:
-                                pass
-                            del st.session_state.upload_cache[cache_key]
-                        
-                        # Remove matching results from session state doc_results
-                        if "doc_results" in st.session_state and st.session_state.doc_results:
-                            st.session_state.doc_results = [
-                                doc for doc in st.session_state.doc_results
-                                if doc["result"].source_filename != uploaded_file.name
-                            ]
-                        
-                        st.rerun()
+            # Render file card using raw HTML (avoids st.container/st.columns issues)
+            st.markdown(
+                f"""<div class="file-card-v2" style="display: flex; align-items: center; gap: 16px; background: rgba(26, 26, 34, 0.7); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 12px; padding: 12px 16px; margin-top: 8px; box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.04); transition: all 0.2s ease-in-out; width: 100%; min-width: 0; box-sizing: border-box;"><div style="flex-shrink: 0; width: 38px; height: 38px; background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.2); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #34d399; font-weight: 700; font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase;">{file_ext.lstrip('.') if len(file_ext) <= 5 else 'DOC'}</div><div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center;"><div style="margin: 0; font-weight: 600; color: #f0f0f3; font-size: 0.9rem; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{uploaded_file.name}</div><div style="margin: 2px 0 0 0; font-size: 0.78rem; color: #8a8a9e; line-height: 1.3; display: flex; align-items: center; gap: 6px;"><span>{file_type}</span><span style="opacity: 0.4;">&bull;</span><span>{file_size_display}</span><span style="opacity: 0.4;">&bull;</span><span style="color: #34d399; font-weight: 600; background: rgba(52, 211, 153, 0.1); padding: 0px 6px; border-radius: 4px; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.03em;">Ready</span></div></div></div>""",
+                unsafe_allow_html=True,
+            )
 
             # Retrieve or create temp path
             cache_key = (uploaded_file.name, uploaded_file.size)

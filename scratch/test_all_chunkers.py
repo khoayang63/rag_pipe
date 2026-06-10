@@ -2,12 +2,12 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from pipeline.converter import PipelineConfig, create_standard_converter
-from pipeline.chunker import run_all_chunking
+from pipeline.parsers.doc_converter import PipelineConfig, create_standard_converter
+from pipeline.processing.chunker import run_all_chunking
 
 config = PipelineConfig()
 converter = create_standard_converter(config)
-pdf_file = Path(__file__).resolve().parent.parent / "docs" / "de_toan5.pdf"
+pdf_file = Path(__file__).resolve().parent.parent / "docs" / "processed" / "de_toan5.pdf"
 
 if not pdf_file.exists():
     print(f"File not found: {pdf_file}")

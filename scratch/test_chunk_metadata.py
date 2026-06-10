@@ -3,12 +3,12 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from pipeline.converter import PipelineConfig, create_standard_converter
+from pipeline.parsers.doc_converter import PipelineConfig, create_standard_converter
 from docling.chunking import HybridChunker
 
 config = PipelineConfig()
 converter = create_standard_converter(config)
-pdf_file = Path(__file__).resolve().parent.parent / "docs" / "de_toan5.pdf"
+pdf_file = Path(__file__).resolve().parent.parent / "docs" / "processed" / "de_toan5.pdf"
 
 try:
     res = converter.convert(pdf_file)

@@ -7,8 +7,8 @@ import streamlit as st
 import time
 import uuid
 import html as html_module
-from pipeline.vector_store import VectorStore
-from pipeline.embedder import get_embedder
+from pipeline.indexer.postgres_store import VectorStore
+from pipeline.processing.embedder import get_embedder
 
 def render_vector_store_viewer(doc_name: str, doc_id: str = "0"):
     """
@@ -251,11 +251,21 @@ def render_vector_store_viewer(doc_name: str, doc_id: str = "0"):
                 key=f"search_limit_input_{doc_id}"
             )
 
-        show_contextualized = st.toggle(
-            "Show enriched contextualized text",
-            value=True,
-            key=f"search_show_ctx_{doc_id}"
-        )
+        col_toggles = st.columns(2)
+        with col_toggles[0]:
+            show_contextualized = st.toggle(
+                "Show enriched contextualized text",
+                value=True,
+                key=f"search_show_ctx_{doc_id}"
+            )
+        with col_toggles[1]:
+            use_rerank = False
+            if "Hybrid" in search_mode:
+                use_rerank = st.toggle(
+                    "Rerank results with BGE-Reranker-v2-m3",
+                    value=False,
+                    key=f"search_use_rerank_{doc_id}"
+                )
         
         if search_query:
             results = []
@@ -263,19 +273,24 @@ def render_vector_store_viewer(doc_name: str, doc_id: str = "0"):
             with st.spinner("Searching..."):
                 try:
                     # 1. Run search based on mode
-                    if "Vector" in search_mode:
+                    if "Vector Search Only" in search_mode:
                         embedder = get_embedder()
                         query_emb = embedder.get_embeddings([search_query])[0]
                         results = db.vector_search(query_emb, limit=search_limit)
                         mode_label = "vector"
-                    elif "BM25" in search_mode:
+                    elif "BM25 Search Only" in search_mode:
                         results = db.keyword_search(search_query, limit=search_limit)
                         mode_label = "bm25"
                     else:  # Hybrid
                         embedder = get_embedder()
                         query_emb = embedder.get_embeddings([search_query])[0]
-                        results = db.hybrid_search(search_query, query_emb, limit=search_limit)
-                        mode_label = "hybrid"
+                        results = db.hybrid_search(
+                            search_query,
+                            query_emb,
+                            limit=search_limit,
+                            use_rerank=use_rerank
+                        )
+                        mode_label = "hybrid_rerank" if use_rerank else "hybrid"
                         
                     # 2. Render Results
                     if not results:
@@ -353,9 +368,25 @@ def _render_search_result_card(item: dict, rank: int, mode: str, show_contextual
         score_html = f'<div class="search-score" style="color:#34d399;">Cosine Similarity: <strong>{item["score"]:.3f}</strong></div>'
     elif mode == "bm25":
         score_html = f'<div class="search-score" style="color:#fbbf24;">BM25 Score: <strong>{item["score"]:.3f}</strong></div>'
+    elif mode == "hybrid_rerank":
+        v_score_str = f" ({item['vector_score']:.3f})" if item['vector_score'] is not None else ""
+        v_rank = f"#{item['vector_rank']}{v_score_str}" if item['vector_rank'] is not None else "N/A"
+        
+        f_score_str = f" ({item['fts_score']:.3f})" if item['fts_score'] is not None else ""
+        f_rank = f"#{item['fts_rank']}{f_score_str}" if item['fts_rank'] is not None else "N/A"
+        
+        score_html = (
+            f'<div class="search-score" style="color:#a78bfa;">Rerank Score: <strong>{item["rerank_score"]:.4f}</strong>'
+            f' <span style="color:#5c5c6e; font-size:0.68rem; margin-left:8px;">(RRF: {item["rrf_score"]:.4f} | Vector Rank: {v_rank} | BM25 Rank: {f_rank})</span>'
+            f'</div>'
+        )
     else: # hybrid
-        v_rank = f"#{item['vector_rank']}" if item['vector_rank'] is not None else "N/A"
-        f_rank = f"#{item['fts_rank']}" if item['fts_rank'] is not None else "N/A"
+        v_score_str = f" ({item['vector_score']:.3f})" if item['vector_score'] is not None else ""
+        v_rank = f"#{item['vector_rank']}{v_score_str}" if item['vector_rank'] is not None else "N/A"
+        
+        f_score_str = f" ({item['fts_score']:.3f})" if item['fts_score'] is not None else ""
+        f_rank = f"#{item['fts_rank']}{f_score_str}" if item['fts_rank'] is not None else "N/A"
+        
         score_html = (
             f'<div class="search-score" style="color:#60a5fa;">RRF Score: <strong>{item["rrf_score"]:.4f}</strong>'
             f' <span style="color:#5c5c6e; font-size:0.68rem; margin-left:8px;">(Vector Rank: {v_rank} | BM25 Rank: {f_rank})</span>'
@@ -370,8 +401,12 @@ def _render_search_result_card(item: dict, rank: int, mode: str, show_contextual
         f'</div>'
     )
 
+    card_style = ""
+    if mode == "hybrid_rerank":
+        card_style = ' style="border-left-color: #a78bfa;"'
+
     card_html = (
-        '<div class="search-result-card">'
+        f'<div class="search-result-card"{card_style}>'
         '  <div class="search-card-header">'
         '    <div class="search-card-rank">#' + str(rank) + '</div>'
         + score_html
