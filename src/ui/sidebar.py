@@ -216,23 +216,6 @@ def render_sidebar() -> PipelineConfig:
                 help="Layout analysis model used to segment page regions."
             )
 
-            config = PipelineConfig(
-                pipeline_mode="standard",
-                do_ocr=do_ocr,
-                do_table_structure=do_table,
-                do_formula_enrichment=do_formula,
-                do_code_enrichment=do_code,
-                do_picture_description=do_pic_desc,
-                do_picture_classification=do_pic_class,
-                generate_page_images=gen_page,
-                generate_picture_images=gen_pic,
-                images_scale=images_scale,
-                ocr_languages=ocr_langs,
-                ocr_engine=ocr_engine,
-                layout_model=layout_model,
-                downstream_model=downstream_model,
-            )
-
         else:
             # VLM pipeline options
             st.markdown(
@@ -274,6 +257,50 @@ def render_sidebar() -> PipelineConfig:
                 help="Scale factor for pipeline images",
             )
 
+        # PDF Splitting Options (Common to both modes)
+        st.divider()
+        st.markdown(
+            '<p style="font-size:0.8rem; color:#9898a6; font-weight:600; '
+            'text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.5rem;">'
+            "PDF Splitting (Chia nhỏ PDF)</p>",
+            unsafe_allow_html=True,
+        )
+        enable_pdf_splitting = st.toggle(
+            "Chia nhỏ PDF lớn",
+            value=True,
+            help="Tự động chia nhỏ file PDF thành nhiều phần để xử lý lần lượt, tránh lỗi tràn bộ nhớ (std::bad_alloc) đối với tài liệu dài."
+        )
+        pdf_splitting_part_size = st.slider(
+            "Số trang mỗi phần",
+            min_value=5,
+            max_value=30,
+            value=15,
+            step=1,
+            disabled=not enable_pdf_splitting,
+            help="Chia nhỏ file PDF thành từng phần từ 10-20 trang (mặc định là 15 trang) để xử lý."
+        )
+
+        # Instantiate config
+        if pipeline_mode == "standard":
+            config = PipelineConfig(
+                pipeline_mode="standard",
+                do_ocr=do_ocr,
+                do_table_structure=do_table,
+                do_formula_enrichment=do_formula,
+                do_code_enrichment=do_code,
+                do_picture_description=do_pic_desc,
+                do_picture_classification=do_pic_class,
+                generate_page_images=gen_page,
+                generate_picture_images=gen_pic,
+                images_scale=images_scale,
+                ocr_languages=ocr_langs,
+                ocr_engine=ocr_engine,
+                layout_model=layout_model,
+                downstream_model=downstream_model,
+                enable_pdf_splitting=enable_pdf_splitting,
+                pdf_splitting_part_size=pdf_splitting_part_size,
+            )
+        else:
             config = PipelineConfig(
                 pipeline_mode="vlm",
                 vlm_preset=vlm_preset,
@@ -282,6 +309,8 @@ def render_sidebar() -> PipelineConfig:
                 vlm_max_new_tokens=vlm_max_tokens,
                 images_scale=images_scale,
                 downstream_model=downstream_model,
+                enable_pdf_splitting=enable_pdf_splitting,
+                pdf_splitting_part_size=pdf_splitting_part_size,
             )
 
         # Config JSON preview
@@ -306,6 +335,8 @@ def render_sidebar() -> PipelineConfig:
                     "images_scale": config.images_scale,
                     "ocr_languages": config.ocr_languages,
                     "downstream_model": config.downstream_model,
+                    "enable_pdf_splitting": config.enable_pdf_splitting,
+                    "pdf_splitting_part_size": config.pdf_splitting_part_size,
                 }
             else:
                 display_config = {
@@ -316,6 +347,8 @@ def render_sidebar() -> PipelineConfig:
                     "vlm_max_new_tokens": config.vlm_max_new_tokens,
                     "images_scale": config.images_scale,
                     "downstream_model": config.downstream_model,
+                    "enable_pdf_splitting": config.enable_pdf_splitting,
+                    "pdf_splitting_part_size": config.pdf_splitting_part_size,
                 }
 
             st.code(json.dumps(display_config, indent=2), language="json")

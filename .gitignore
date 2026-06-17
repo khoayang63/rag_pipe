@@ -169,3 +169,6 @@ markdown_output/
 
 # Streamlit config
 .streamlit/
+
+# Agent workspace files
+.agents/

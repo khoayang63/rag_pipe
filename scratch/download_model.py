@@ -34,6 +34,16 @@ def download_reranker():
     AutoModelForSequenceClassification.from_pretrained("BAAI/bge-reranker-v2-m3")
     print("BAAI/bge-reranker-v2-m3 downloaded successfully.")
 
+def download_spell_corrector():
+    print("\n==================================================")
+    print("Downloading bmd1905/vietnamese-correction-v2 (Spell Correction)...")
+    print("Size: ~1.5 GB")
+    print("==================================================")
+    from transformers import AutoModelForSeq2SeqLM
+    AutoTokenizer.from_pretrained("bmd1905/vietnamese-correction-v2")
+    AutoModelForSeq2SeqLM.from_pretrained("bmd1905/vietnamese-correction-v2")
+    print("bmd1905/vietnamese-correction-v2 downloaded successfully.")
+
 def main():
     print("==================================================")
     print("   Docling RAG Pipeline Model Downloader")
@@ -49,11 +59,12 @@ def main():
     print("4. Qwen/Qwen3-VL-2B-Instruct (4.5 GB) - Default recommended VLM")
     print("5. Qwen/Qwen2-VL-2B-Instruct (4.5 GB) - Alternate VLM")
     print("6. HuggingFaceTB/SmolVLM-256M-Instruct (0.8 GB) - Ultra-light VLM")
-    print("7. Download All (All of the above)")
-    print("8. Exit")
+    print("7. bmd1905/vietnamese-correction-v2 (~1.5 GB) - Vietnamese Spell Correction")
+    print("8. Download All (All of the above)")
+    print("9. Exit")
     
     try:
-        choice = input("\nEnter choice (1-8): ").strip()
+        choice = input("\nEnter choice (1-9): ").strip()
     except (KeyboardInterrupt, EOFError):
         print("\nExiting.")
         sys.exit(0)
@@ -72,8 +83,11 @@ def main():
     elif choice == "6":
         download_vlm("HuggingFaceTB/SmolVLM-256M-Instruct")
     elif choice == "7":
+        download_spell_corrector()
+    elif choice == "8":
         download_embedding()
         download_reranker()
+        download_spell_corrector()
         download_vlm("Qwen/Qwen3-VL-2B-Instruct")
         download_vlm("Qwen/Qwen2-VL-2B-Instruct")
         download_vlm("HuggingFaceTB/SmolVLM-256M-Instruct")

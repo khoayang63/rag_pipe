@@ -58,6 +58,10 @@ class PipelineConfig:
     # Downstream vision model for figure description
     downstream_model: str = "Qwen/Qwen3-VL-2B-Instruct"
 
+    # PDF splitting options
+    enable_pdf_splitting: bool = True
+    pdf_splitting_part_size: int = 15
+
 
 @dataclass
 class ConversionResult:
@@ -252,11 +256,12 @@ def _detect_actual_ocr(converter) -> str:
 def convert_document(
     file_path: str,
     config: PipelineConfig,
+    progress_callback=None,
 ) -> ConversionResult:
     """
     Convert a document using the configured pipeline.
-
-    Returns a ConversionResult with the document, markdown, and metadata.
+    If the document is a PDF with more than part_size pages, it is processed
+    sequentially in parts of 10-20 pages each to prevent Out of Memory (std::bad_alloc).
     """
     # Clear GPU cache before conversion
     try:
@@ -266,36 +271,94 @@ def convert_document(
     except ImportError:
         gc.collect()
 
+    input_format = detect_input_format(file_path)
+    format_name = input_format.value if input_format else "unknown"
+
+    # Detect if PDF splitting is needed
+    is_large_pdf = False
+    total_pages = 0
+    part_size = getattr(config, "pdf_splitting_part_size", 15)
+    enable_pdf_splitting = getattr(config, "enable_pdf_splitting", True)
+
+    if input_format == InputFormat.PDF and enable_pdf_splitting:
+        try:
+            import pypdfium2 as pdfium
+            with pdfium.PdfDocument(file_path) as pdf:
+                total_pages = len(pdf)
+            if total_pages > part_size:
+                is_large_pdf = True
+        except Exception as e:
+            print(f"[doc_converter] Error checking PDF page count: {e}")
+
     # Create the appropriate converter
     if config.pipeline_mode == "vlm":
         converter = create_vlm_converter(config)
     else:
         converter = create_standard_converter(config)
 
-    # Run conversion
     start_time = time.time()
-    result = converter.convert(file_path)
-    conversion_time = time.time() - start_time
 
-    # Export to markdown
-    md = result.document.export_to_markdown()
+    if is_large_pdf:
+        # Sequential split processing
+        from docling_core.types.doc import DoclingDocument
+        docs_to_concat = []
+
+        split_msg = f"PDF has {total_pages} pages. Splitting into parts of {part_size} pages..."
+        print(f"[doc_converter] {split_msg}")
+        if progress_callback:
+            progress_callback(split_msg)
+
+        for start in range(1, total_pages + 1, part_size):
+            end = min(start + part_size - 1, total_pages)
+            
+            # Clear cache before each part
+            try:
+                import torch
+                gc.collect()
+                torch.cuda.empty_cache()
+            except ImportError:
+                gc.collect()
+                
+            range_msg = f"Processing page range {start}-{end} of {total_pages}..."
+            print(f"[doc_converter] {range_msg}")
+            if progress_callback:
+                progress_callback(range_msg)
+
+            part_result = converter.convert(file_path, page_range=(start, end))
+            docs_to_concat.append(part_result.document)
+
+        concat_msg = "Concatenating page ranges..."
+        print(f"[doc_converter] {concat_msg}")
+        if progress_callback:
+            progress_callback(concat_msg)
+
+        document = DoclingDocument.concatenate(docs=docs_to_concat)
+        conversion_time = time.time() - start_time
+        md = document.export_to_markdown()
+        timings = None
+    else:
+        # Normal single conversion
+        result = converter.convert(file_path)
+        conversion_time = time.time() - start_time
+        document = result.document
+        md = document.export_to_markdown()
+        timings = result.timings
 
     # Build config dict for display
     config_dict = _build_config_dict(config)
     config_dict["actual_ocr"] = _detect_actual_ocr(converter)
-
-    input_format = detect_input_format(file_path)
-    format_name = input_format.value if input_format else "unknown"
+    if is_large_pdf:
+        config_dict["split_processing"] = f"Yes ({part_size}-page chunks)"
 
     return ConversionResult(
-        document=result.document,
+        document=document,
         markdown=md,
         conversion_time=conversion_time,
         pipeline_mode=config.pipeline_mode,
         pipeline_config=config_dict,
         input_format=format_name,
         source_filename=Path(file_path).name,
-        timings=result.timings,
+        timings=timings,
     )
 
 
@@ -333,69 +396,32 @@ def convert_documents(
     progress_callback=None,
 ) -> list[ConversionResult]:
     """
-    Batch-convert multiple documents using Docling's convert_all().
-
-    Creates the converter once and reuses it across all files for efficiency.
-    The progress_callback(index, total, filename) is called before each file
-    starts processing (useful for UI progress updates).
-
-    Args:
-        file_paths: List of file paths to convert
-        config: Pipeline configuration to apply to all files
-        progress_callback: Optional callback(index, total, filename)
-
-    Returns:
-        List of ConversionResult, one per input file
+    Batch-convert multiple documents.
+    Calls convert_document sequentially for each file, which handles
+    PDF page-splitting and clears VRAM/RAM between documents.
     """
-    # Clear GPU cache before batch conversion
-    try:
-        import torch
-        gc.collect()
-        torch.cuda.empty_cache()
-    except ImportError:
-        gc.collect()
-
-    # Create the converter once
-    if config.pipeline_mode == "vlm":
-        converter = create_vlm_converter(config)
-    else:
-        converter = create_standard_converter(config)
-
-    config_dict = _build_config_dict(config)
     results = []
-
-    # Use convert_all for batch processing
-    start_time = time.time()
-    for i, result in enumerate(converter.convert_all(file_paths)):
-        # Detect actual OCR engine after the first document initialized the pipeline
-        if "actual_ocr" not in config_dict:
-            config_dict["actual_ocr"] = _detect_actual_ocr(converter)
-
-        file_path = file_paths[i] if i < len(file_paths) else "unknown"
-        elapsed = time.time() - start_time
-
+    total_files = len(file_paths)
+    
+    for i, file_path in enumerate(file_paths):
+        filename = Path(file_path).name
         if progress_callback:
-            progress_callback(i + 1, len(file_paths), Path(file_path).name)
-
-        md = result.document.export_to_markdown()
-
-        input_format = detect_input_format(file_path)
-        format_name = input_format.value if input_format else "unknown"
-
-        results.append(
-            ConversionResult(
-                document=result.document,
-                markdown=md,
-                conversion_time=elapsed,
-                pipeline_mode=config.pipeline_mode,
-                pipeline_config=config_dict,
-                input_format=format_name,
-                source_filename=Path(file_path).name,
-                timings=result.timings,
-            )
-        )
-
-        # Reset timer for next file
-        start_time = time.time()
-
+            progress_callback(i + 1, total_files, filename)
+        
+        # Clear cache between documents
+        try:
+            import torch
+            gc.collect()
+            torch.cuda.empty_cache()
+        except ImportError:
+            gc.collect()
+            
+        # Define local callback to report internal page conversion status
+        local_cb = None
+        if progress_callback:
+            local_cb = lambda msg: progress_callback(i + 1, total_files, f"{filename} ({msg})")
+            
+        results.append(convert_document(file_path, config, progress_callback=local_cb))
+        
     return results
+

@@ -138,11 +138,30 @@ def render_vector_store_viewer(doc_name: str, doc_id: str = "0"):
                 method_m = selected_source_key.split("compare_")[-1]
                 active_chunks = st.session_state[compare_key][method_m].chunks
 
+            # Check if corrected chunks exist in session state
+            spell_key = f"spell_chunks_{doc_id}_{selected_source_key}"
+            corrected_lookup = {}
+            applied_count = 0
+            if spell_key in st.session_state:
+                spell_data = st.session_state[spell_key]
+                corrected_lookup = {
+                    item["index"]: item["current_text"]
+                    for item in spell_data
+                }
+                applied_count = sum(1 for item in spell_data if item["applied"])
+
+            # Status HTML badge for spelling correction status
+            if applied_count > 0:
+                spell_status_html = f'<span style="font-size:0.72rem; color:#34d399; font-weight:600;">✓ {applied_count} correction(s) applied (will ingest corrected text)</span>'
+            else:
+                spell_status_html = '<span style="font-size:0.72rem; color:#5c5c6e;">No corrections applied (ingesting original text)</span>'
+
             st.markdown(
                 f"""
                 <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.04); border-radius:8px; padding:10px 12px; margin-bottom:1rem;">
                     <span style="font-size:0.75rem; color:#9898a6;">Chunks to index: <strong>{len(active_chunks)}</strong></span><br>
-                    <span style="font-size:0.72rem; color:#5c5c6e;">Model: <code>BAAI/bge-m3</code> (1024-dim dense vectors)</span>
+                    <span style="font-size:0.72rem; color:#5c5c6e;">Model: <code>BAAI/bge-m3</code> (1024-dim dense vectors)</span><br>
+                    <div style="margin-top: 4px;">{spell_status_html}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -173,17 +192,20 @@ def render_vector_store_viewer(doc_name: str, doc_id: str = "0"):
                     texts_to_embed = []
                     
                     for chunk in active_chunks:
+                        # Use corrected contextualized text if available, otherwise original
+                        text_to_use = corrected_lookup.get(chunk.index, chunk.contextualized)
+                        
                         payload_chunks.append({
                             "index": chunk.index,
                             "text": chunk.text,
-                            "contextualized": chunk.contextualized,
+                            "contextualized": text_to_use,
                             "page_no": chunk.page_no if hasattr(chunk, 'page_no') else 1,
                             "chunk_type": chunk.chunk_type,
                             "headings": chunk.headings,
                             "captions": chunk.captions
                         })
                         # Use contextualized text for embeddings for richer retrieval semantics
-                        texts_to_embed.append(chunk.contextualized)
+                        texts_to_embed.append(text_to_use)
                     
                     # Batch embedding generation (batch size = 16 to protect VRAM/RAM)
                     batch_size = 16

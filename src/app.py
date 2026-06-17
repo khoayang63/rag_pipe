@@ -25,6 +25,7 @@ from ui.figure_gallery import render_figure_gallery
 from ui.pipeline_info import render_pipeline_info
 from ui.chunking_viewer import render_chunking_viewer
 from ui.vector_store_viewer import render_vector_store_viewer
+from ui.spell_correction_viewer import render_spell_correction_viewer
 from pipeline.parsers.doc_converter import convert_document, convert_documents
 from pipeline.parsers.figure_extractor import extract_figures
 from pipeline.parsers.enrichment import enrich_markdown, count_image_placeholders
@@ -139,10 +140,19 @@ if file_paths:
             st.write(f"Mode: **{config.pipeline_mode.title()}**")
 
             try:
+                # Clear cached spell correction state from previous runs
+                for key in list(st.session_state.keys()):
+                    if key.startswith("spell_paragraphs_") or key.startswith("spell_chunks_") or key.startswith("corrected_md_"):
+                        del st.session_state[key]
+
                 if len(file_paths) == 1:
                     # Single file — use convert_document for exact backward compat
                     st.write(f"Converting: **{os.path.basename(file_paths[0])}**")
-                    result = convert_document(file_paths[0], config)
+                    result = convert_document(
+                        file_paths[0],
+                        config,
+                        progress_callback=lambda msg: st.write(msg)
+                    )
                     conversion_results = [result]
                 else:
                     # Multiple files — use convert_all for batch efficiency
@@ -150,7 +160,7 @@ if file_paths:
                     conversion_results = convert_documents(
                         file_paths,
                         config,
-                        progress_callback=lambda i, t, name: st.write(f"[{i}/{t}] Converting: **{name}**"),
+                        progress_callback=lambda i, t, msg: st.write(f"[{i}/{t}] {msg}"),
                     )
 
                 # Build per-document results with figure extraction
@@ -327,11 +337,12 @@ if st.session_state.doc_results:
                 "Markdown Output",
                 "Extracted Figures",
                 "Chunking",
-                "Pipeline Info",
+                "Spell Correction",
                 "Vector DB",
+                "Pipeline Info",
             ])
 
-            # Tab 1: Markdown
+            # Tab 1: Markdown Output
             with result_tabs[0]:
                 render_markdown_viewer(
                     result.markdown,
@@ -339,7 +350,7 @@ if st.session_state.doc_results:
                     doc_id=str(doc_idx),
                 )
 
-            # Tab 2: Figures
+            # Tab 2: Extracted Figures
             with result_tabs[1]:
                 if figures:
                     render_figure_gallery(
@@ -356,12 +367,10 @@ if st.session_state.doc_results:
                     doc_id=str(doc_idx),
                 )
 
-            # Tab 4: Pipeline Info
+            # Tab 4: Spell Correction
             with result_tabs[3]:
-                render_pipeline_info(
-                    conversion_result=result,
-                    figures_count=len(figures),
-                    description_result=doc_data.get("description_result"),
+                render_spell_correction_viewer(
+                    doc_id=str(doc_idx),
                 )
 
             # Tab 5: Vector DB
@@ -370,6 +379,15 @@ if st.session_state.doc_results:
                     doc_name=filename,
                     doc_id=str(doc_idx),
                 )
+
+            # Tab 6: Pipeline Info
+            with result_tabs[5]:
+                render_pipeline_info(
+                    conversion_result=result,
+                    figures_count=len(figures),
+                    description_result=doc_data.get("description_result"),
+                )
+
 
 else:
     # Welcome state — show pipeline info
