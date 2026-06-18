@@ -76,14 +76,16 @@ def _render_chunk_card(para, doc_id: str, state_key: str):
         # Skipped chunk (markdown syntax or only numbers) — show as dimmed
         safe_text = html_module.escape(original).replace("\n", "<br>")
         st.markdown(
-            f'<div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.04); '
-            f'border-radius:8px; padding:10px 14px; margin:4px 0; opacity:0.5;">'
-            f'<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">'
-            f'<span style="font-size:0.7rem; color:#5c5c6e; font-family:\'JetBrains Mono\',monospace;">Chunk #{idx}</span>'
-            f'<span style="font-size:0.65rem; color:#5c5c6e; background:rgba(255,255,255,0.05); '
-            f'padding:2px 8px; border-radius:4px;">SKIPPED (syntax/non-alpha)</span>'
-            f'</div>'
-            f'<div style="font-size:0.8rem; color:#5c5c6e; line-height:1.5;">{safe_text}</div>'
+            f'<div class="chunk-card" style="border-left-color: var(--text-muted); opacity: 0.5;">'
+            f'  <div class="chunk-card-header">'
+            f'    <div class="chunk-card-index" style="background: rgba(255,255,255,0.04); color: var(--text-muted);">'
+            f'      #{idx}'
+            f'    </div>'
+            f'    <span class="chunk-type-badge" style="border-color: rgba(255,255,255,0.1); color: var(--text-muted); font-size:0.65rem;">'
+            f'      SKIPPED (syntax/non-alpha)'
+            f'    </span>'
+            f'  </div>'
+            f'  <div class="chunk-card-text" style="color: var(--text-muted);">{safe_text}</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -102,40 +104,37 @@ def _render_chunk_card(para, doc_id: str, state_key: str):
         # Applied status
         if is_applied:
             status_badge = (
-                '<span style="font-size:0.65rem; color:#34d399; background:rgba(52,211,153,0.1); '
-                'padding:2px 8px; border-radius:4px; border:1px solid rgba(52,211,153,0.2);">✓ APPLIED</span>'
+                f'<span class="chunk-type-badge" style="border-color: rgba(52,211,153,0.2); color:#34d399; background:rgba(52,211,153,0.1); '
+                f'font-size:0.65rem; margin-left: auto;">✓ APPLIED</span>'
             )
         else:
             status_badge = ""
 
         st.markdown(
-            f'<div style="background:rgba(255,255,255,0.03); border:1px solid rgba(251,191,36,0.15); '
-            f'border-left:3px solid {badge_color}; border-radius:8px; padding:12px 16px; margin:6px 0;">'
-            f'<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">'
-            f'<span style="font-size:0.7rem; color:#9898a6; font-family:\'JetBrains Mono\',monospace;">Chunk #{idx}</span>'
-            f'<span style="font-size:0.65rem; color:{badge_color}; background:{badge_color}18; '
-            f'padding:2px 8px; border-radius:4px; border:1px solid {badge_color}33;">'
-            f'{num_changes} change{"s" if num_changes > 1 else ""}</span>'
-            f'{status_badge}'
-            f'</div>'
-            f'<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">'
+            f'<div class="chunk-card" style="border-left-color: {badge_color};">'
+            f'  <div class="chunk-card-header">'
+            f'    <div class="chunk-card-index" style="background: {badge_color}22; color: {badge_color};">'
+            f'      #{idx}'
+            f'    </div>'
+            f'    <span class="chunk-type-badge" style="border-color: {badge_color}33; color: {badge_color}; font-size:0.65rem;">'
+            f'      {num_changes} change{"s" if num_changes > 1 else ""}'
+            f'    </span>'
+            f'    {status_badge}'
+            f'  </div>'
+            f'  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">'
             # Original column
-            f'<div>'
-            f'<div style="font-size:0.68rem; color:#f87171; text-transform:uppercase; '
-            f'letter-spacing:0.05em; margin-bottom:6px; font-weight:600;">Original</div>'
-            f'<div style="font-size:0.82rem; color:#e4e4e7; line-height:1.65; '
-            f'background:rgba(239,68,68,0.04); border:1px solid rgba(239,68,68,0.08); '
-            f'border-radius:6px; padding:10px 12px;">{orig_html}</div>'
-            f'</div>'
+            f'    <div>'
+            f'      <div style="font-size:0.68rem; color:#f87171; text-transform:uppercase; '
+            f'                  letter-spacing:0.05em; margin-bottom:6px; font-weight:600;">Original</div>'
+            f'      <div class="chunk-card-text" style="background:rgba(239,68,68,0.04); border:1px solid rgba(239,68,68,0.08); max-height: 250px;">{orig_html}</div>'
+            f'    </div>'
             # Corrected column
-            f'<div>'
-            f'<div style="font-size:0.68rem; color:#34d399; text-transform:uppercase; '
-            f'letter-spacing:0.05em; margin-bottom:6px; font-weight:600;">Corrected</div>'
-            f'<div style="font-size:0.82rem; color:#e4e4e7; line-height:1.65; '
-            f'background:rgba(52,211,153,0.04); border:1px solid rgba(52,211,153,0.08); '
-            f'border-radius:6px; padding:10px 12px;">{corr_html}</div>'
-            f'</div>'
-            f'</div>'
+            f'    <div>'
+            f'      <div style="font-size:0.68rem; color:#34d399; text-transform:uppercase; '
+            f'                  letter-spacing:0.05em; margin-bottom:6px; font-weight:600;">Corrected</div>'
+            f'      <div class="chunk-card-text" style="background:rgba(52,211,153,0.04); border:1px solid rgba(52,211,153,0.08); max-height: 250px;">{corr_html}</div>'
+            f'    </div>'
+            f'  </div>'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -178,14 +177,16 @@ def _render_chunk_card(para, doc_id: str, state_key: str):
             display_html = safe_text
 
         st.markdown(
-            f'<div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); '
-            f'border-radius:8px; padding:10px 14px; margin:4px 0;">'
-            f'<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">'
-            f'<span style="font-size:0.7rem; color:#9898a6; font-family:\'JetBrains Mono\',monospace;">Chunk #{idx}</span>'
-            f'<span style="font-size:0.65rem; color:#34d399; background:rgba(52,211,153,0.1); '
-            f'padding:2px 8px; border-radius:4px;">✓ No errors</span>'
-            f'</div>'
-            f'<div style="font-size:0.82rem; color:#c0c0cc; line-height:1.5;">{display_html}</div>'
+            f'<div class="chunk-card" style="border-left-color: var(--accent);">'
+            f'  <div class="chunk-card-header">'
+            f'    <div class="chunk-card-index" style="background: rgba(52,211,153,0.15); color: var(--accent);">'
+            f'      #{idx}'
+            f'    </div>'
+            f'    <span class="chunk-type-badge" style="border-color: rgba(52,211,153,0.2); color: var(--accent); background: rgba(52,211,153,0.1); font-size:0.65rem; margin-left: auto;">'
+            f'      ✓ No errors'
+            f'    </span>'
+            f'  </div>'
+            f'  <div class="chunk-card-text">{display_html}</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -210,12 +211,13 @@ def _render_chunk_card(para, doc_id: str, state_key: str):
             display_html = safe_text
 
         st.markdown(
-            f'<div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); '
-            f'border-radius:8px; padding:10px 14px; margin:4px 0;">'
-            f'<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">'
-            f'<span style="font-size:0.7rem; color:#9898a6; font-family:\'JetBrains Mono\',monospace;">Chunk #{idx}</span>'
-            f'</div>'
-            f'<div style="font-size:0.82rem; color:#c0c0cc; line-height:1.5;">{display_html}</div>'
+            f'<div class="chunk-card" style="border-left-color: var(--info);">'
+            f'  <div class="chunk-card-header">'
+            f'    <div class="chunk-card-index" style="background: rgba(96,165,250,0.15); color: var(--info);">'
+            f'      #{idx}'
+            f'    </div>'
+            f'  </div>'
+            f'  <div class="chunk-card-text">{display_html}</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
