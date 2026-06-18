@@ -26,6 +26,7 @@ from ui.pipeline_info import render_pipeline_info
 from ui.chunking_viewer import render_chunking_viewer
 from ui.vector_store_viewer import render_vector_store_viewer
 from ui.spell_correction_viewer import render_spell_correction_viewer
+from ui.chatbot_playground import render_chatbot_playground
 from pipeline.parsers.doc_converter import convert_document, convert_documents
 from pipeline.parsers.figure_extractor import extract_figures
 from pipeline.parsers.enrichment import enrich_markdown, count_image_placeholders
@@ -339,6 +340,7 @@ if st.session_state.doc_results:
                 "Chunking",
                 "Spell Correction",
                 "Vector DB",
+                "Chatbot Playground",
                 "Pipeline Info",
             ])
 
@@ -380,8 +382,14 @@ if st.session_state.doc_results:
                     doc_id=str(doc_idx),
                 )
 
-            # Tab 6: Pipeline Info
+            # Tab 6: Chatbot Playground
             with result_tabs[5]:
+                render_chatbot_playground(
+                    doc_id=str(doc_idx),
+                )
+
+            # Tab 7: Pipeline Info
+            with result_tabs[6]:
                 render_pipeline_info(
                     conversion_result=result,
                     figures_count=len(figures),
