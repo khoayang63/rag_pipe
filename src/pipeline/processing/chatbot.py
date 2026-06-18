@@ -103,7 +103,7 @@ class OllamaChatbot:
                 data=json.dumps(payload).encode("utf-8"),
                 headers={"Content-Type": "application/json"}
             )
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with urllib.request.urlopen(req, timeout=180) as response:
                 for line in response:
                     if not line:
                         continue
@@ -111,6 +111,10 @@ class OllamaChatbot:
                     response_text = line_data.get("response", "")
                     if response_text:
                         yield response_text
+        except TimeoutError:
+            yield f"\n\n[ERROR] Gọi Ollama bị quá thời gian chờ (Timeout).\n"
+            yield "Điều này thường xảy ra khi Ollama phải tải mô hình lần đầu tiên từ ổ cứng vào RAM/VRAM (có thể mất 1-2 phút tùy cấu hình máy).\n"
+            yield "Vui lòng đợi một lát cho Ollama hoàn tất tải mô hình rồi gửi lại câu hỏi."
         except urllib.error.URLError as e:
             yield f"\n\n[ERROR] Không thể kết nối với dịch vụ Ollama cục bộ tại {self.host}. Chi tiết: {e.reason}\n"
             yield "Hãy đảm bảo rằng ứng dụng Ollama đang chạy trên máy tính của bạn."
