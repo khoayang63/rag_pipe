@@ -127,7 +127,7 @@ def render_chatbot_playground(doc_id: str = "0"):
                 st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
                 with st.expander("📄 Nguồn tham chiếu (Citations)", expanded=False):
                     for i, item in enumerate(msg["citations"]):
-                        idx = item.get("index", "?")
+                        idx = item.get("chunk_index") if item.get("chunk_index") is not None else item.get("index", "?")
                         page = item.get("page_no", "?")
                         score = item.get("score") or item.get("rrf_score", 0.0)
                         text = item.get("text", "")
@@ -200,7 +200,7 @@ def render_chatbot_playground(doc_id: str = "0"):
                 st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
                 with st.expander("📄 Nguồn tham chiếu (Citations)", expanded=False):
                     for i, item in enumerate(retrieved_chunks):
-                        idx = item.get("index", "?")
+                        idx = item.get("chunk_index") if item.get("chunk_index") is not None else item.get("index", "?")
                         page = item.get("page_no", "?")
                         score = item.get("score") or item.get("rrf_score", 0.0)
                         text = item.get("text", "")

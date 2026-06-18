@@ -49,7 +49,7 @@ class OllamaChatbot:
         """Construct prompt with system instructions, context chunks, and optional chat history."""
         context_parts = []
         for c in chunks:
-            idx = c.get("index", "?")
+            idx = c.get("chunk_index") if c.get("chunk_index") is not None else c.get("index", "?")
             text = c.get("text", "")
             context_parts.append(f"[Chunk #{idx}]\n{text}")
 
