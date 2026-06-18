@@ -13,6 +13,68 @@ from pipeline.processing.embedder import get_embedder
 from pipeline.processing.chatbot import OllamaChatbot
 
 
+def _render_citation_card(item):
+    """Render a single citation card with rich metadata and formatted scores."""
+    import html as html_module
+    
+    idx = item.get("chunk_index") if item.get("chunk_index") is not None else item.get("index", "?")
+    page = item.get("page_no", "?")
+    text = item.get("text", "")
+    
+    # Process chunk type badge
+    chunk_type = item.get("chunk_type", "Text") or "Text"
+    if "." in chunk_type:
+        chunk_type = chunk_type.split(".")[-1]
+        
+    # Process headings breadcrumb
+    headings = item.get("headings", []) or []
+    heading_path = " › ".join(headings) if headings else ""
+    
+    # Process scores dynamically
+    scores = []
+    if item.get("rerank_score") is not None:
+        scores.append(f"Rerank: {item['rerank_score']:.4f}")
+    if item.get("vector_score") is not None:
+        scores.append(f"Cosine: {item['vector_score']:.4f}")
+    if item.get("fts_score") is not None:
+        scores.append(f"BM25: {item['fts_score']:.2f}")
+    if not scores:
+        # Fallback to rrf_score or standard score
+        rrf = item.get("rrf_score")
+        if rrf is not None:
+            scores.append(f"RRF: {rrf:.4f}")
+        else:
+            score = item.get("score", 0.0)
+            scores.append(f"Score: {score:.4f}")
+            
+    score_str = " | ".join(scores)
+    
+    heading_html = (
+        f'<div style="font-size:0.68rem; color:#5c5c6e; margin-bottom:6px; font-family:\'Outfit\', sans-serif;">'
+        f'📁 {html_module.escape(heading_path)}'
+        f'</div>'
+        if heading_path else ''
+    )
+    
+    st.markdown(
+        f"""
+        <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); 
+                    border-radius:6px; padding:12px; margin-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.7rem; color:#9898a6; margin-bottom:6px;">
+                <div>
+                    <strong>Chunk #{idx}</strong> (Trang {page})
+                    <span style="background:rgba(52, 211, 153, 0.08); color:#34d399; padding:1px 6px; border-radius:4px; margin-left:8px; font-size:0.65rem; border:1px solid rgba(52, 211, 153, 0.15);">{html_module.escape(chunk_type)}</span>
+                </div>
+                <span style="font-family:'JetBrains Mono', monospace; color:#34d399; font-size:0.68rem;">{score_str}</span>
+            </div>
+            {heading_html}
+            <div style="font-size:0.75rem; color:#c0c0cc; line-height:1.45; font-family:'JetBrains Mono', monospace; background:rgba(0,0,0,0.15); padding:8px 10px; border-radius:4px; max-height:150px; overflow-y:auto; word-break:break-word; border:1px solid rgba(255,255,255,0.02);">{html_module.escape(text)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
 def render_chatbot_playground(doc_id: str = "0"):
     """Render the conversational Q&A Chatbot Playground tab."""
     st.markdown(
@@ -126,24 +188,8 @@ def render_chatbot_playground(doc_id: str = "0"):
             if msg["role"] == "assistant" and "citations" in msg and msg["citations"]:
                 st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
                 with st.expander("📄 Nguồn tham chiếu (Citations)", expanded=False):
-                    for i, item in enumerate(msg["citations"]):
-                        idx = item.get("chunk_index") if item.get("chunk_index") is not None else item.get("index", "?")
-                        page = item.get("page_no", "?")
-                        score = item.get("score") or item.get("rrf_score", 0.0)
-                        text = item.get("text", "")
-                        st.markdown(
-                            f"""
-                            <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); 
-                                        border-radius:6px; padding:10px; margin-bottom:8px;">
-                                <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:#9898a6; margin-bottom:4px;">
-                                    <strong>Chunk #{idx} (Trang {page})</strong>
-                                    <span>Độ tương đồng: {score:.4f}</span>
-                                </div>
-                                <div style="font-size:0.78rem; color:#c0c0cc; line-height:1.4;">{html_module.escape(text)}</div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
+                    for item in msg["citations"]:
+                        _render_citation_card(item)
 
     # ── Chat Input & Processing ──
     if user_query := st.chat_input("Hãy hỏi bất kỳ câu hỏi nào về tài liệu..."):
@@ -199,24 +245,8 @@ def render_chatbot_playground(doc_id: str = "0"):
             if retrieved_chunks:
                 st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
                 with st.expander("📄 Nguồn tham chiếu (Citations)", expanded=False):
-                    for i, item in enumerate(retrieved_chunks):
-                        idx = item.get("chunk_index") if item.get("chunk_index") is not None else item.get("index", "?")
-                        page = item.get("page_no", "?")
-                        score = item.get("score") or item.get("rrf_score", 0.0)
-                        text = item.get("text", "")
-                        st.markdown(
-                            f"""
-                            <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); 
-                                        border-radius:6px; padding:10px; margin-bottom:8px;">
-                                <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:#9898a6; margin-bottom:4px;">
-                                    <strong>Chunk #{idx} (Trang {page})</strong>
-                                    <span>Độ tương đồng: {score:.4f}</span>
-                                </div>
-                                <div style="font-size:0.78rem; color:#c0c0cc; line-height:1.4;">{html_module.escape(text)}</div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
+                    for item in retrieved_chunks:
+                        _render_citation_card(item)
 
             # Append to history state
             st.session_state[history_key].append({
