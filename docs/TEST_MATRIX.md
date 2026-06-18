@@ -19,7 +19,8 @@ implemented until tests or validation evidence exist.
 
 | Story | Contract | Unit | Integration | E2E | Platform | Status | Evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| TBD | Add rows when story packets are created | no | no | no | no | planned | none |
+| [US-002](file:///c:/Users/OS/Desktop/rag_pipeline/docs/stories/E01-chatbot/US-002-chatbot-playground.md) | Chatbot Playground với mô hình Ollama cục bộ (trích dẫn & bộ nhớ hội thoại) | yes | no | no | no | implemented | [test_chatbot.py](file:///c:/Users/OS/Desktop/rag_pipeline/tests/test_chatbot.py) |
+| US-TEST | Kiểm tra lỗi cú pháp Python tệp spell_correction_viewer.py | yes | no | no | no | implemented | `python -m py_compile src/ui/spell_correction_viewer.py` |
 
 ## Evidence Rules
 
