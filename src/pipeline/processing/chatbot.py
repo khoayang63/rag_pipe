@@ -19,18 +19,31 @@ class OllamaChatbot:
         self.default_model = default_model
 
     def list_local_models(self) -> List[str]:
-        """Fetch available models from local Ollama service."""
+        """Fetch available models from local Ollama service, filtering out embedding models."""
         try:
             url = f"{self.host}/api/tags"
             req = urllib.request.Request(url)
             with urllib.request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode("utf-8"))
-                models = [m["name"] for m in data.get("models", [])]
+                models = []
+                for m in data.get("models", []):
+                    name = m["name"]
+                    # Filter out known embedding models (which cannot be used for text generation)
+                    is_embedding = any(kwd in name.lower() for kwd in ["bge", "embed", "nomic", "mxbai"])
+                    
+                    # Also check details family if available (embedding models usually belong to 'bert')
+                    details = m.get("details", {})
+                    family = (details.get("family", "") or "").lower()
+                    if family == "bert":
+                        is_embedding = True
+                        
+                    if not is_embedding:
+                        models.append(name)
                 return models
         except Exception as e:
             print(f"[OllamaChatbot] Error listing models: {e}")
             # Return list of standard models as fallbacks if service not yet online
-            return ["qwen2.5:latest", "llama3.1:latest", "llama3:latest", "llama3:latest"]
+            return ["qwen2.5:latest", "llama3.1:latest", "llama3:latest"]
 
     def generate_prompt(self, query: str, chunks: List[Dict[str, Any]], history: List[Dict[str, str]] = None) -> str:
         """Construct prompt with system instructions, context chunks, and optional chat history."""
