@@ -226,7 +226,7 @@ def render_vector_store_viewer(doc_name: str, doc_id: str = "0"):
                         payload_chunks[idx]["embedding"] = emb
                         
                     # Save to database
-                    my_bar.progress(0.9, text="Saving to Postgres (pgvector)...")
+                    my_bar.progress(0.9, text="Saving chunks to Postgres (pgvector)...")
                     
                     # Use unique document id from conversion result or generate one
                     db_doc_id = doc_id
@@ -236,10 +236,53 @@ def render_vector_store_viewer(doc_name: str, doc_id: str = "0"):
                         chunks=payload_chunks
                     )
                     
+                    # Ingest figures if present in session state
+                    ingested_images_count = 0
+                    if "doc_results" in st.session_state and int(doc_id) < len(st.session_state.doc_results):
+                        doc_data = st.session_state.doc_results[int(doc_id)]
+                        figures = doc_data.get("figures", [])
+                        descriptions = doc_data.get("descriptions")
+                        
+                        if figures:
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            my_bar.progress(0.92, text="Loading visual embedding model BGE-VL-large...")
+                            from pipeline.processing.visual_embedder import get_visual_embedder
+                            visual_embedder = get_visual_embedder()
+                            
+                            payload_images = []
+                            total_figs = len(figures)
+                            for f_idx, fig in enumerate(figures):
+                                my_bar.progress(0.92 + 0.06 * (f_idx / total_figs), text=f"Embedding figure {f_idx+1} of {total_figs}...")
+                                try:
+                                    emb = visual_embedder.embed_image(fig.image_path)
+                                    vlm_desc = descriptions[f_idx] if (descriptions and f_idx < len(descriptions)) else None
+                                    payload_images.append({
+                                        "index": fig.index,
+                                        "image_path": fig.image_path,
+                                        "caption": fig.caption,
+                                        "vlm_description": vlm_desc,
+                                        "page_no": fig.page_no,
+                                        "embedding": emb
+                                    })
+                                except Exception as img_emb_err:
+                                    logger.error(f"Failed to embed image {fig.index}: {img_emb_err}")
+                                    
+                            if payload_images:
+                                my_bar.progress(0.99, text="Saving figures to Postgres...")
+                                ingested_images_count = db.ingest_images(
+                                    doc_id=db_doc_id,
+                                    images=payload_images
+                                )
+                    
                     my_bar.progress(1.0, text="Success!")
                     time.sleep(0.5)
                     my_bar.empty()
-                    st.success(f"Successfully ingested {ingested_count} chunks into pgvector!")
+                    
+                    if ingested_images_count > 0:
+                        st.success(f"Successfully ingested {ingested_count} chunks and {ingested_images_count} figures into pgvector!")
+                    else:
+                        st.success(f"Successfully ingested {ingested_count} chunks into pgvector!")
                     st.balloons()
                 except Exception as e:
                     st.error(f"Ingestion failed: {e}")

@@ -112,6 +112,8 @@ SUPPORTED_FORMATS = {
     ".tiff": "TIFF Image",
     ".tif": "TIFF Image",
     ".bmp": "BMP Image",
+    ".xlsx": "Excel Spreadsheet",
+    ".csv": "CSV Document",
 }
 
 ACCEPTED_EXTENSIONS = list(SUPPORTED_FORMATS.keys())

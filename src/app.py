@@ -2,7 +2,7 @@
 Docling RAG Pipeline — Streamlit Application
 
 Main entry point for the document processing pipeline with web UI.
-Supports PDF, DOCX, PPTX, HTML, and image files.
+Supports PDF, DOCX, PPTX, HTML, Excel, CSV, and image files.
 Supports both single and multi-file batch conversion.
 
 Run: streamlit run src/app.py
@@ -114,6 +114,22 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# ──────────────────────────────────────────────
+# Top-level Navigation
+# ──────────────────────────────────────────────
+app_mode = st.radio(
+    "Chọn chức năng",
+    options=["📄 Xử lý tài liệu", "💬 Chatbot Playground"],
+    horizontal=True,
+    label_visibility="collapsed"
+)
+
+st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
+
+if app_mode == "💬 Chatbot Playground":
+    render_chatbot_playground(doc_id="global")
+    st.stop()
 
 # ──────────────────────────────────────────────
 # Step 1: File Upload (multi-file)
@@ -411,7 +427,7 @@ else:
                 <div class="pipeline-flow">
                     <div class="pipeline-stage">
                         <span class="stage-name">Upload Documents</span>
-                        <span class="stage-status">PDF, DOCX, PPTX, HTML, Images (multi-file)</span>
+                        <span class="stage-status">PDF, DOCX, PPTX, XLSX, CSV, HTML, Images (multi-file)</span>
                     </div>
                     <div class="pipeline-stage">
                         <span class="stage-name">Configure Pipeline</span>
@@ -512,6 +528,12 @@ else:
                 <span style="background:rgba(167,139,250,0.1); color:#a78bfa; padding:4px 14px;
                        border-radius:999px; font-size:0.78rem; font-family:'JetBrains Mono',monospace;
                        border:1px solid rgba(167,139,250,0.15);">TIFF</span>
+                <span style="background:rgba(236,72,153,0.1); color:#ec4899; padding:4px 14px;
+                       border-radius:999px; font-size:0.78rem; font-family:'JetBrains Mono',monospace;
+                       border:1px solid rgba(236,72,153,0.15);">XLSX</span>
+                <span style="background:rgba(45,212,191,0.1); color:#2dd4bf; padding:4px 14px;
+                       border-radius:999px; font-size:0.78rem; font-family:'JetBrains Mono',monospace;
+                       border:1px solid rgba(45,212,191,0.15);">CSV</span>
             </div>
         </div>
         """,

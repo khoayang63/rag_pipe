@@ -77,6 +77,147 @@ class ConversionResult:
     timings: Optional[dict] = None
 
 
+EASYOCR_GROUPS = {
+    "chinese_sim": {"ch_sim"},
+    "chinese_tra": {"ch_tra"},
+    "japanese": {"ja"},
+    "korean": {"ko"},
+    "thai": {"th"},
+    "tamil": {"ta"},
+    "telugu": {"te"},
+    "kannada": {"kn"},
+    "bengali": {"bn", "as"},
+    "arabic": {"ar", "fa", "ur", "ug"},
+    "devanagari": {"hi", "mr", "ne"},
+    "cyrillic": {"ru", "rs_cyrillic", "be", "bg", "uk", "mn"},
+    "latin": {
+        "af", "az", "bs", "cs", "cy", "da", "de", "es", "et", "fr", "ga", "hr", "hu",
+        "id", "is", "it", "ku", "la", "lt", "lv", "mi", "ms", "mt", "nl", "no", "oc",
+        "pi", "pl", "pt", "ro", "rs_latin", "sk", "sl", "sq", "sv", "sw", "tl", "tr",
+        "uz", "vi"
+    }
+}
+
+
+def _filter_easyocr_compatibility(langs: list) -> list:
+    """
+    Filter the language list to ensure it only contains mutually compatible
+    languages for EasyOCR, preventing compatibility ValueErrors.
+    """
+    # Find the first language in langs that is NOT "en"
+    first_non_en = None
+    for lang in langs:
+        if lang != "en":
+            first_non_en = lang
+            break
+
+    if not first_non_en:
+        return langs
+
+    # Find the active group for first_non_en
+    active_group_set = set()
+    for name, g_set in EASYOCR_GROUPS.items():
+        if first_non_en in g_set:
+            active_group_set = g_set
+            break
+
+    if not active_group_set:
+        # Fallback: keep only "en" and the unrecognized language
+        return [lang for lang in langs if lang == "en" or lang == first_non_en]
+
+    # Keep only "en" and languages belonging to the active group
+    filtered = []
+    for lang in langs:
+        if lang == "en" or lang in active_group_set:
+            filtered.append(lang)
+
+    return filtered
+
+
+def _map_ocr_languages(ocr_languages: list, engine: str) -> list:
+    """
+    Map UI/standard language codes to engine-specific codes.
+    Supported UI inputs: ["en", "vi", "zh", "ja", "ko", "fr", "de", "es", "pt", "it", "ru", "ar"]
+    """
+    if not ocr_languages:
+        return ocr_languages
+
+    engine_lower = engine.lower()
+
+    if engine_lower == "easyocr":
+        mapped = []
+        for lang in ocr_languages:
+            if lang == "zh":
+                # Default "zh" to "ch_sim" for simplified Chinese
+                mapped.append("ch_sim")
+            else:
+                mapped.append(lang)
+        # Deduplicate preserving order
+        seen = set()
+        deduped = [x for x in mapped if not (x in seen or seen.add(x))]
+        return _filter_easyocr_compatibility(deduped)
+
+    elif engine_lower in ("tesseract", "tesseract_cli"):
+        tess_map = {
+            "en": "eng",
+            "vi": "vie",
+            "zh": "chi_sim",
+            "ja": "jpn",
+            "ko": "kor",
+            "fr": "fra",
+            "de": "deu",
+            "es": "spa",
+            "pt": "por",
+            "it": "ita",
+            "ru": "rus",
+            "ar": "ara"
+        }
+        mapped = []
+        for lang in ocr_languages:
+            if lang in tess_map:
+                mapped.append(tess_map[lang])
+            else:
+                mapped.append(lang)
+        seen = set()
+        return [x for x in mapped if not (x in seen or seen.add(x))]
+
+    elif engine_lower == "rapidocr":
+        mapped = []
+        for lang in ocr_languages:
+            if lang == "en":
+                mapped.append("english")
+            elif lang == "zh":
+                mapped.append("chinese")
+            else:
+                mapped.append(lang)
+        return mapped
+
+    elif engine_lower == "macocr":
+        mac_map = {
+            "en": "en-US",
+            "vi": "vi-VN",
+            "zh": "zh-CN",
+            "ja": "ja-JP",
+            "ko": "ko-KR",
+            "fr": "fr-FR",
+            "de": "de-DE",
+            "es": "es-ES",
+            "pt": "pt-PT",
+            "it": "it-IT",
+            "ru": "ru-RU",
+            "ar": "ar-SA"
+        }
+        mapped = []
+        for lang in ocr_languages:
+            if lang in mac_map:
+                mapped.append(mac_map[lang])
+            else:
+                mapped.append(lang)
+        return mapped
+
+    return ocr_languages
+
+
 def create_standard_converter(config: PipelineConfig) -> DocumentConverter:
     """
     Create a DocumentConverter using StandardPdfPipeline.
@@ -126,7 +267,7 @@ def create_standard_converter(config: PipelineConfig) -> DocumentConverter:
     options.ocr_options = ocr_cls()
 
     if hasattr(options.ocr_options, "lang"):
-        options.ocr_options.lang = config.ocr_languages
+        options.ocr_options.lang = _map_ocr_languages(config.ocr_languages, selected_ocr)
 
     # Set Layout model options
     from docling.datamodel.pipeline_options import (
@@ -220,6 +361,8 @@ def detect_input_format(file_path: str) -> Optional[InputFormat]:
         ".tiff": InputFormat.IMAGE,
         ".tif": InputFormat.IMAGE,
         ".bmp": InputFormat.IMAGE,
+        ".xlsx": InputFormat.XLSX,
+        ".csv": InputFormat.CSV,
     }
     return format_map.get(ext)
 

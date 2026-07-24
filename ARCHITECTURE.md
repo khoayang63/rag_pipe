@@ -42,22 +42,23 @@ The diagram below visualizes the document processing, enrichment, chunking, and 
 │   (Enrich Markdown)     │
 └───────┬─────────────────┘
         │
-        ▼
-┌─────────────────────────┐
-│    Contextual Chunking  │
-│ (Hierarchical/Hybrid)   │
-└───────┬─────────────────┘
-        │
-        ▼
-┌─────────────────────────┐
-│ BAAI/bge-m3 Embedding   │
-│  (1024-dim Normalized)  │
-└───────┬─────────────────┘
-        │
-        ▼
-┌─────────────────────────┐
-│   PostgreSQL Ingestion  │
-│ (pgvector + GIN FTS)    │
+        ├─────────────────────────┬─────────────────────────┐
+        ▼ (Text Chunks)           │                         ▼ (Figures/Images)
+┌─────────────────────────┐       │                 ┌─────────────────────────┐
+│    Contextual Chunking  │       │                 │  BGE-VL-large Embedder  │
+│ (Hierarchical/Hybrid)   │       │                 │   (768-dim Normalized)  │
+└───────┬─────────────────┘       │                 └───────────┬─────────────┘
+        │                         │                             │
+        ▼                         │                             ▼
+┌─────────────────────────┐       │                 ┌─────────────────────────┐
+│ BAAI/bge-m3 Embedding   │       │                 │    document_images      │
+│  (1024-dim Normalized)  │       │                 │    PostgreSQL Table     │
+└───────┬─────────────────┘       │                 └─────────────────────────┘
+        │                         │
+        ▼                         │
+┌─────────────────────────┐       │
+│    document_chunks      │◄──────┘
+│    PostgreSQL Table     │
 └─────────────────────────┘
 ```
 
@@ -73,7 +74,8 @@ The pipeline integrates several state-of-the-art models for extraction, reasonin
 | **OCR Engine** | `RapidOCR` / `EasyOCR` | - | Extracts characters from scanned texts/images | Standard |
 | **VLM Converter** | `Granite-Vision` / `SmolDocling` | - | End-to-end vision-based markdown conversion | VLM |
 | **Figure Description** | `Qwen/Qwen3-VL-2B-Instruct` | 2.0 B params | Downstream enrichment of figure contents | Standard (Optional) |
-| **Text Embedding** | `BAAI/bge-m3` | 1024-dim | Generates normalized dense vectors | Ingestion |
+| **Text Embedding** | `BAAI/bge-m3` | 1024-dim | Generates normalized dense vectors for text chunks | Ingestion |
+| **Visual Embedding** | `BAAI/BGE-VL-large` | 768-dim | Generates joint visual-textual vector embeddings for document figures | Ingestion |
 
 ---
 
@@ -108,14 +110,34 @@ CREATE TABLE IF NOT EXISTS document_chunks (
 );
 ```
 
-### 3.3. Database Indexes
-For fast retrieval at scale, the database maintains two specialized indexes:
-1. **Vector Index (HNSW)**: Uses Cosine Distance operator `<=>` for fast dense retrieval.
+### 3.3. `document_images`
+Stores cropped figure/diagram images, native captions, VLM visual descriptions, page numbers, and 768-dimensional visual vector embeddings.
+```sql
+CREATE TABLE IF NOT EXISTS document_images (
+    id SERIAL PRIMARY KEY,
+    document_id VARCHAR(255) REFERENCES documents(id) ON DELETE CASCADE,
+    image_index INT NOT NULL,
+    image_path TEXT NOT NULL,
+    caption TEXT,
+    vlm_description TEXT,
+    page_no INT,
+    embedding vector(768)
+);
+```
+
+### 3.4. Database Indexes
+For fast retrieval at scale, the database maintains specialized indexes:
+1. **Vector Index for Chunks (HNSW)**: Uses Cosine Distance operator `<=>` for fast dense text retrieval.
    ```sql
    CREATE INDEX IF NOT EXISTS document_chunks_hnsw_cosine 
    ON document_chunks USING hnsw (embedding vector_cosine_ops);
    ```
-2. **Keyword Index (GIN)**: Fast full-text search indexing on contextualized text using the `'simple'` configuration.
+2. **Vector Index for Images (HNSW)**: Uses Cosine Distance operator `<=>` for fast dense visual retrieval on joint embeddings.
+   ```sql
+   CREATE INDEX IF NOT EXISTS document_images_hnsw_cosine 
+   ON document_images USING hnsw (embedding vector_cosine_ops);
+   ```
+3. **Keyword Index (GIN)**: Fast full-text search indexing on contextualized text using the `'simple'` configuration.
    ```sql
    CREATE INDEX IF NOT EXISTS document_chunks_fts_idx 
    ON document_chunks USING gin (to_tsvector('simple', contextualized));
@@ -125,7 +147,7 @@ For fast retrieval at scale, the database maintains two specialized indexes:
 
 ## 4. Search Retrieval Modes
 
-The system supports three search modalities to compare performance:
+The system supports four search modalities:
 
 ### 4.1. Dense Vector Search
 Uses cosine similarity to retrieve chunks semantically similar to the user query.
@@ -154,3 +176,14 @@ Combines the strengths of both dense vector search and keyword search. It retrie
 $$RRF\_Score(d) = \frac{1}{k + rank_{vector}(d)} + \frac{1}{k + rank_{fts}(d)}$$
 
 Where $k = 60$ (the standard smoothing constant). The item with the highest RRF score is ranked first, neutralizing score calibration issues between dense cosine scores and keyword TF-IDF/BM25 scores.
+
+### 4.4. Multimodal Image Retrieval
+Allows searching for diagrams, charts, and figures directly using joint cross-modal vector mapping.
+* **Mechanism**: The user text query is embedded using the text encoder of `BAAI/BGE-VL-large` to produce a 768-dimensional vector, which is then compared against all image embeddings stored in `document_images` using Cosine Distance.
+* **Metric**: `1 - (embedding <=> query_vector)`
+* **SQL Query**:
+  ```sql
+  SELECT di.*, (1 - (di.embedding <=> %s::vector)) as score 
+  FROM document_images di
+  ORDER BY di.embedding <=> %s::vector LIMIT %s;
+  ```

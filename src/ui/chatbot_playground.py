@@ -16,7 +16,49 @@ from pipeline.processing.chatbot import OllamaChatbot
 def _render_citation_card(item):
     """Render a single citation card with rich metadata and formatted scores."""
     import html as html_module
+    import os
+    import streamlit as st
     
+    if item.get("is_image"):
+        idx = item.get("image_index") if item.get("image_index") is not None else item.get("index", "?")
+        page = item.get("page_no", "?")
+        image_path = item.get("image_path", "")
+        caption = item.get("caption", "")
+        vlm_desc = item.get("vlm_description", "")
+        score = item.get("score", 0.0)
+        
+        score_str = f"Cosine: {score:.4f}"
+        
+        st.markdown(
+            f"""
+            <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); 
+                        border-radius:6px; padding:12px; margin-bottom:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.7rem; color:#9898a6; margin-bottom:8px;">
+                    <div>
+                        <strong>Hình ảnh #{idx}</strong> (Trang {page})
+                        <span style="background:rgba(96, 165, 250, 0.08); color:#60a5fa; padding:1px 6px; border-radius:4px; margin-left:8px; font-size:0.65rem; border:1px solid rgba(96, 165, 250, 0.15);">Image Citation</span>
+                    </div>
+                    <span style="font-family:'JetBrains Mono', monospace; color:#34d399; font-size:0.68rem;">{score_str}</span>
+                </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        # Display the image
+        if os.path.exists(image_path):
+            st.image(image_path, use_container_width=True)
+        else:
+            st.warning(f"Không tìm thấy file ảnh tại: {image_path}")
+            
+        # Display captions and VLM descriptions
+        if caption:
+            st.markdown(f"**Chú thích ảnh (Docling):** *{caption}*")
+        if vlm_desc:
+            st.markdown(f"**Mô tả chi tiết (VLM):** *{vlm_desc}*")
+            
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
     idx = item.get("chunk_index") if item.get("chunk_index") is not None else item.get("index", "?")
     page = item.get("page_no", "?")
     text = item.get("text", "")
@@ -51,7 +93,7 @@ def _render_citation_card(item):
     
     heading_html = (
         f'<div style="font-size:0.68rem; color:#5c5c6e; margin-bottom:6px; font-family:\'Outfit\', sans-serif;">'
-        f'📁 {html_module.escape(heading_path)}'
+        f'{html_module.escape(heading_path)}'
         f'</div>'
         if heading_path else ''
     )
@@ -146,6 +188,7 @@ def render_chatbot_playground(doc_id: str = "0"):
             "Mô hình Ollama (LLM Model)",
             options=available_models if available_models else ["qwen2.5:latest"],
             index=0,
+            key=f"selected_model_{doc_id}",
             help="Chọn mô hình Ollama đang chạy trên máy của bạn. Khuyên dùng qwen2.5 nhờ hỗ trợ tốt tiếng Việt."
         )
 
@@ -156,6 +199,7 @@ def render_chatbot_playground(doc_id: str = "0"):
             max_value=15,
             value=4,
             step=1,
+            key=f"search_limit_{doc_id}",
             help="Số lượng phân đoạn tài liệu khớp nhất được gửi làm ngữ cảnh cho LLM trả lời."
         )
 
@@ -163,6 +207,7 @@ def render_chatbot_playground(doc_id: str = "0"):
         use_rerank = st.toggle(
             "Sử dụng Reranker",
             value=False,
+            key=f"use_rerank_{doc_id}",
             help="Bật mô hình bge-reranker-v2-m3 để chấm điểm lại các chunk và lấy ngữ cảnh chuẩn nhất."
         )
 
@@ -176,7 +221,7 @@ def render_chatbot_playground(doc_id: str = "0"):
     # Clear chat button
     col_clear1, col_clear2 = st.columns([4, 1])
     with col_clear2:
-        if st.button("🧹 Xóa hội thoại", use_container_width=True):
+        if st.button("🧹 Xóa hội thoại", key=f"clear_chat_{doc_id}", use_container_width=True):
             st.session_state[history_key] = []
             st.rerun()
 
@@ -192,7 +237,7 @@ def render_chatbot_playground(doc_id: str = "0"):
                         _render_citation_card(item)
 
     # ── Chat Input & Processing ──
-    if user_query := st.chat_input("Hãy hỏi bất kỳ câu hỏi nào về tài liệu..."):
+    if user_query := st.chat_input("Hãy hỏi bất kỳ câu hỏi nào về tài liệu...", key=f"chat_input_{doc_id}"):
         # 1. Render user query in chat
         with st.chat_message("user"):
             st.markdown(user_query)
@@ -200,8 +245,9 @@ def render_chatbot_playground(doc_id: str = "0"):
         # Append to state
         st.session_state[history_key].append({"role": "user", "content": user_query})
 
-        # 2. Retrieve Matching Context Chunks
+        # 2. Retrieve Matching Context Chunks & Images
         retrieved_chunks = []
+        retrieved_images = []
         with st.spinner("Đang truy xuất thông tin từ tài liệu..."):
             try:
                 # Generate embedding via BAAI/bge-m3
@@ -215,6 +261,18 @@ def render_chatbot_playground(doc_id: str = "0"):
                     limit=search_limit,
                     use_rerank=use_rerank
                 )
+                
+                # Try parallel retrieval of relevant images
+                try:
+                    from pipeline.processing.visual_embedder import get_visual_embedder
+                    visual_emb = get_visual_embedder().embed_text(user_query)
+                    raw_images = db.image_vector_search(visual_emb, limit=2)
+                    for img in raw_images:
+                        img["is_image"] = True
+                        retrieved_images.append(img)
+                except Exception as img_err:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Failed to retrieve image context: {img_err}")
             except Exception as e:
                 st.error(f"Lỗi truy xuất dữ liệu: {e}")
 
@@ -241,17 +299,18 @@ def render_chatbot_playground(doc_id: str = "0"):
             
             response_placeholder.markdown(full_response)
 
-            # Show citations expander if chunks exist
-            if retrieved_chunks:
+            # Show citations expander if chunks or images exist
+            all_citations = retrieved_chunks + retrieved_images
+            if all_citations:
                 st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
                 with st.expander("📄 Nguồn tham chiếu (Citations)", expanded=False):
-                    for item in retrieved_chunks:
+                    for item in all_citations:
                         _render_citation_card(item)
 
             # Append to history state
             st.session_state[history_key].append({
                 "role": "assistant",
                 "content": full_response,
-                "citations": retrieved_chunks
+                "citations": all_citations
             })
             st.rerun()

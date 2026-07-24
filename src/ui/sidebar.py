@@ -209,6 +209,137 @@ def render_sidebar() -> PipelineConfig:
                                 unsafe_allow_html=True
                             )
 
+            if engine_installed and ocr_engine == "easyocr":
+                import os
+                from pathlib import Path
+                import zipfile
+                import requests
+
+                # Resolve EasyOCR cache dir
+                easyocr_module_path = os.environ.get("EASYOCR_MODULE_PATH") or os.environ.get("MODULE_PATH")
+                if easyocr_module_path:
+                    model_dir = Path(easyocr_module_path) / "model"
+                else:
+                    model_dir = Path.home() / ".EasyOCR" / "model"
+
+                easyocr_models = {
+                    "craft": {
+                        "filename": "craft_mlt_25k.pth",
+                        "url": "https://github.com/JaidedAI/EasyOCR/releases/download/pre-v1.1.6/craft_mlt_25k.zip"
+                    },
+                    "english_g2": {
+                        "filename": "english_g2.pth",
+                        "url": "https://github.com/JaidedAI/EasyOCR/releases/download/v1.3/english_g2.zip"
+                    },
+                    "latin_g2": {
+                        "filename": "latin_g2.pth",
+                        "url": "https://github.com/JaidedAI/EasyOCR/releases/download/v1.3/latin_g2.zip"
+                    },
+                    "zh_sim_g2": {
+                        "filename": "zh_sim_g2.pth",
+                        "url": "https://github.com/JaidedAI/EasyOCR/releases/download/v1.3/zh_sim_g2.zip"
+                    },
+                    "japanese_g2": {
+                        "filename": "japanese_g2.pth",
+                        "url": "https://github.com/JaidedAI/EasyOCR/releases/download/v1.3/japanese_g2.zip"
+                    },
+                    "korean_g2": {
+                        "filename": "korean_g2.pth",
+                        "url": "https://github.com/JaidedAI/EasyOCR/releases/download/v1.3/korean_g2.zip"
+                    },
+                    "arabic_g1": {
+                        "filename": "arabic.pth",
+                        "url": "https://github.com/JaidedAI/EasyOCR/releases/download/pre-v1.1.6/arabic.zip"
+                    },
+                    "cyrillic_g2": {
+                        "filename": "cyrillic_g2.pth",
+                        "url": "https://github.com/JaidedAI/EasyOCR/releases/download/v1.6.1/cyrillic_g2.zip"
+                    }
+                }
+
+                needed_models = ["craft"]
+                latin_langs = {"vi", "fr", "de", "es", "pt", "it"}
+                
+                for lang in ocr_langs:
+                    if lang == "en":
+                        needed_models.append("english_g2")
+                    elif lang == "zh":
+                        needed_models.append("zh_sim_g2")
+                    elif lang == "ja":
+                        needed_models.append("japanese_g2")
+                    elif lang == "ko":
+                        needed_models.append("korean_g2")
+                    elif lang == "ar":
+                        needed_models.append("arabic_g1")
+                    elif lang == "ru":
+                        needed_models.append("cyrillic_g2")
+                    elif lang in latin_langs:
+                        needed_models.append("latin_g2")
+
+                needed_models = list(set(needed_models))
+                
+                missing_models = {}
+                for m_key in needed_models:
+                    m_info = easyocr_models[m_key]
+                    file_path = model_dir / m_info["filename"]
+                    if not file_path.exists():
+                        missing_models[m_key] = m_info
+
+                if missing_models:
+                    st.markdown(
+                        f"""
+                        <div style="display:flex; align-items:center; gap:8px; margin-top:0.2rem; margin-bottom:0.5rem; background:rgba(245,158,11,0.08); padding:8px 12px; border-radius:6px; border:1px solid rgba(245,158,11,0.2);">
+                            <span style="color:#f59e0b; font-size:1.1rem; font-weight:bold;">⚠️</span>
+                            <span style="font-size:0.78rem; color:#fbbf24;">
+                                Missing {len(missing_models)} EasyOCR model file(s) for the selected language(s).
+                            </span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    
+                    if st.button("📥 Download Missing Models", key="download_easyocr_models", use_container_width=True):
+                        model_dir.mkdir(parents=True, exist_ok=True)
+                        for m_key, m_info in missing_models.items():
+                            zip_path = model_dir / f"{m_key}.zip"
+                            try:
+                                status_text = st.empty()
+                                progress_bar = st.progress(0.0)
+                                
+                                response = requests.get(m_info["url"], stream=True, timeout=30)
+                                response.raise_for_status()
+                                total_length = response.headers.get('content-length')
+                                
+                                if total_length is None:
+                                    with open(zip_path, 'wb') as f:
+                                        f.write(response.content)
+                                else:
+                                    total_length = int(total_length)
+                                    dl = 0
+                                    with open(zip_path, 'wb') as f:
+                                        for chunk in response.iter_content(chunk_size=1024 * 1024):
+                                            if chunk:
+                                                f.write(chunk)
+                                                dl += len(chunk)
+                                                percent = min(1.0, dl / total_length)
+                                                progress_bar.progress(percent)
+                                                status_text.info(f"Downloading {m_info['filename']}: {dl / (1024*1024):.1f}MB / {total_length / (1024*1024):.1f}MB ({percent*100:.1f}%)")
+                                
+                                status_text.info(f"Extracting {m_info['filename']}...")
+                                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                                    zip_ref.extractall(model_dir)
+                                
+                                if zip_path.exists():
+                                    zip_path.unlink()
+                                
+                                progress_bar.empty()
+                                status_text.success(f"Downloaded {m_info['filename']}!")
+                            except Exception as e:
+                                st.error(f"Error downloading {m_info['filename']}: {str(e)}")
+                                if zip_path.exists():
+                                    zip_path.unlink()
+                        st.rerun()
+
             layout_model = st.selectbox(
                 "Layout Model",
                 options=["layout_v2", "heron", "heron_101", "egret_medium", "egret_large", "egret_xlarge"],

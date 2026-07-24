@@ -44,6 +44,15 @@ def download_spell_corrector():
     AutoModelForSeq2SeqLM.from_pretrained("bmd1905/vietnamese-correction-v2")
     print("bmd1905/vietnamese-correction-v2 downloaded successfully.")
 
+def download_bge_vl_large():
+    print("\n==================================================")
+    print("Downloading BAAI/BGE-VL-large (Multimodal Image Search)...")
+    print("Size: ~1.2 GB")
+    print("==================================================")
+    model = AutoModel.from_pretrained("BAAI/BGE-VL-large", trust_remote_code=True)
+    model.set_processor("BAAI/BGE-VL-large")
+    print("BAAI/BGE-VL-large downloaded successfully.")
+
 def main():
     print("==================================================")
     print("   Docling RAG Pipeline Model Downloader")
@@ -60,11 +69,12 @@ def main():
     print("5. Qwen/Qwen2-VL-2B-Instruct (4.5 GB) - Alternate VLM")
     print("6. HuggingFaceTB/SmolVLM-256M-Instruct (0.8 GB) - Ultra-light VLM")
     print("7. bmd1905/vietnamese-correction-v2 (~1.5 GB) - Vietnamese Spell Correction")
-    print("8. Download All (All of the above)")
-    print("9. Exit")
+    print("8. BAAI/BGE-VL-large (1.2 GB) - Required for Multimodal Image Search")
+    print("9. Download All (All of the above)")
+    print("10. Exit")
     
     try:
-        choice = input("\nEnter choice (1-9): ").strip()
+        choice = input("\nEnter choice (1-10): ").strip()
     except (KeyboardInterrupt, EOFError):
         print("\nExiting.")
         sys.exit(0)
@@ -85,9 +95,12 @@ def main():
     elif choice == "7":
         download_spell_corrector()
     elif choice == "8":
+        download_bge_vl_large()
+    elif choice == "9":
         download_embedding()
         download_reranker()
         download_spell_corrector()
+        download_bge_vl_large()
         download_vlm("Qwen/Qwen3-VL-2B-Instruct")
         download_vlm("Qwen/Qwen2-VL-2B-Instruct")
         download_vlm("HuggingFaceTB/SmolVLM-256M-Instruct")

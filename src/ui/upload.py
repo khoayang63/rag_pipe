@@ -37,7 +37,7 @@ def render_upload() -> list[str]:
                 Upload Documents
             </h3>
             <p style="margin:0; font-size:0.82rem; color:#5c5c6e;">
-                PDF, DOCX, PPTX, HTML, PNG, JPG, TIFF — Drag and drop or click to browse (multiple files supported)
+                PDF, DOCX, PPTX, XLSX, CSV, HTML, PNG, JPG, TIFF — Drag and drop or click to browse (multiple files supported)
             </p>
         </div>
         """,
@@ -46,7 +46,7 @@ def render_upload() -> list[str]:
 
     uploaded_files = st.file_uploader(
         "Upload documents",
-        type=[ext.lstrip(".") for ext in ACCEPTED_EXTENSIONS],
+        type=None,  # Allow all files at browser level to bypass Streamlit MIME validation bugs
         label_visibility="collapsed",
         help="Supports: " + ", ".join(SUPPORTED_FORMATS.values()),
         accept_multiple_files=True,
@@ -59,14 +59,32 @@ def render_upload() -> list[str]:
         st.session_state.upload_cache = {}
 
     if uploaded_files:
+        # Filter files by accepted extensions to bypass any browser MIME bugs
+        valid_uploaded_files = []
+        invalid_uploaded_files = []
+        for f in uploaded_files:
+            file_ext = Path(f.name).suffix.lower()
+            if file_ext in ACCEPTED_EXTENSIONS:
+                valid_uploaded_files.append(f)
+            else:
+                invalid_uploaded_files.append(f)
+
+        # Show warning/error for unsupported formats
+        if invalid_uploaded_files:
+            unsupported_names = ", ".join([f.name for f in invalid_uploaded_files])
+            st.error(f"Tệp không được hỗ trợ: {unsupported_names}. Định dạng hỗ trợ: " + ", ".join(SUPPORTED_FORMATS.values()))
+
+        if not valid_uploaded_files:
+            return []
+
         # Clean up deleted_files for files no longer present in the uploader widget
-        uploaded_names = {f.name for f in uploaded_files}
+        uploaded_names = {f.name for f in valid_uploaded_files}
         st.session_state.deleted_files = {
             name for name in st.session_state.deleted_files if name in uploaded_names
         }
 
-        # Filter active files
-        active_files = [f for f in uploaded_files if f.name not in st.session_state.deleted_files]
+        # Filter active files from valid uploaded files
+        active_files = [f for f in valid_uploaded_files if f.name not in st.session_state.deleted_files]
 
         if not active_files:
             return []

@@ -119,7 +119,89 @@ class VectorStore:
                     CREATE INDEX IF NOT EXISTS document_chunks_fts_idx 
                     ON document_chunks USING gin (to_tsvector('simple', contextualized));
                 """)
+                
+                # Create document_images table with vector column (dim=768 for BAAI/BGE-VL-large dense)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS document_images (
+                        id SERIAL PRIMARY KEY,
+                        document_id VARCHAR(255) REFERENCES documents(id) ON DELETE CASCADE,
+                        image_index INT NOT NULL,
+                        image_path TEXT NOT NULL,
+                        caption TEXT,
+                        vlm_description TEXT,
+                        page_no INT,
+                        embedding vector(768)
+                    );
+                """)
+                
+                # Create HNSW index for cosine distance similarity search on image embeddings
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS document_images_hnsw_cosine 
+                    ON document_images USING hnsw (embedding vector_cosine_ops);
+                """)
             conn.commit()
+
+    def ingest_images(self, doc_id: str, images: List[Dict[str, Any]]) -> int:
+        """
+        Ingest a document's figures/images with their captions, VLM descriptions, and embeddings.
+        Returns the number of images successfully ingested.
+        """
+        self.initialize_schema()
+        
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                # Clear existing images for this document to avoid duplicates
+                cur.execute("DELETE FROM document_images WHERE document_id = %s;", (doc_id,))
+                
+                # Bulk insert images
+                inserted_count = 0
+                for img in images:
+                    emb = img.get("embedding")
+                    if not emb or len(emb) != 768:
+                        logger.error(f"Invalid embedding dimensions for image {img.get('index')}: expected 768, got {len(emb) if emb else 0}")
+                        continue
+                    
+                    emb_str = f"[{','.join(map(str, emb))}]"
+                    
+                    cur.execute("""
+                        INSERT INTO document_images 
+                        (document_id, image_index, image_path, caption, vlm_description, page_no, embedding)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s::vector);
+                    """, (
+                        doc_id,
+                        img["index"],
+                        img["image_path"],
+                        img.get("caption"),
+                        img.get("vlm_description"),
+                        img.get("page_no"),
+                        emb_str
+                    ))
+                    inserted_count += 1
+                    
+            conn.commit()
+            return inserted_count
+
+    def image_vector_search(self, query_embedding: List[float], limit: int = 3) -> List[Dict[str, Any]]:
+        """Perform dense vector search for matching images using Cosine distance."""
+        if len(query_embedding) != 768:
+            raise ValueError(f"Query embedding size must be 768 for image search, got {len(query_embedding)}")
+            
+        emb_str = f"[{','.join(map(str, query_embedding))}]"
+        
+        with self._get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT 
+                        di.id, di.document_id, di.image_index, di.image_path, 
+                        di.caption, di.vlm_description, di.page_no,
+                        d.name as doc_name,
+                        (1 - (di.embedding <=> %s::vector)) as score
+                    FROM document_images di
+                    JOIN documents d ON di.document_id = d.id
+                    ORDER BY di.embedding <=> %s::vector
+                    LIMIT %s;
+                """, (emb_str, emb_str, limit))
+                return [dict(row) for row in cur.fetchall()]
 
     def ingest_document(self, doc_id: str, doc_name: str, chunks: List[Dict[str, Any]]) -> int:
         """
